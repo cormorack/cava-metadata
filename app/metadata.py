@@ -27,10 +27,6 @@ Choosable = TypeVar("Choosable", str, pd.DataFrame)
 BASE_URL = "https://ooinet.oceanobservatories.org"
 M2M_URL = "api/m2m"
 
-os.environ["OOI_USERNAME"] = "OOIAPI-2OUST06WGJPVR1"
-os.environ["OOI_TOKEN"] = "GHZEG56M9Q"
-os.environ["OLD_CAVA_API_BASE"] = 'https://api.interactiveoceans.washington.edu'
-
 OOI_USERNAME = os.environ["OOI_USERNAME"]
 OOI_TOKEN = os.environ["OOI_TOKEN"]
 OLD_CAVA_API_BASE = os.environ["OLD_CAVA_API_BASE"]
@@ -179,9 +175,7 @@ def get_sites():
     if version == CURRENT_API_VERSION:
         results = _fetch_table("sites", record=True)
     elif version == 1.1:
-        resp = requests.get(
-            f"{OLD_CAVA_API_BASE}/v1_1/sites"
-        ).json()
+        resp = requests.get(f"{OLD_CAVA_API_BASE}/v1_1/sites").json()
         results = json.dumps(resp)
     else:
         results = ""
@@ -298,9 +292,7 @@ def get_catalog():
             "results": results,
         }
     elif version == 1.1:
-        resp = requests.get(
-            f"{OLD_CAVA_API_BASE}/v1_1/catalog"
-        ).json()
+        resp = requests.get(f"{OLD_CAVA_API_BASE}/v1_1/catalog").json()
     else:
         resp = {}
 
@@ -314,9 +306,7 @@ def get_cables():
         with open(os.path.join("/opt/app", "RSNCable.geojson")) as f:
             results = f.read()
     elif version == 1.1:
-        resp = requests.get(
-            f"{OLD_CAVA_API_BASE}/v1_1/cables"
-        ).json()
+        resp = requests.get(f"{OLD_CAVA_API_BASE}/v1_1/cables").json()
         results = json.dumps(resp)
     else:
         results = ""
