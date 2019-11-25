@@ -16,6 +16,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from flask import Response
 from app.db import get_db
 import pandas as pd
+import geopandas as gpd
 import requests
 from yodapy.utils.parser import parse_annotations_json, unix_time_millis
 from yodapy.utils.conn import fetch_url
@@ -127,6 +128,12 @@ def _df_to_record(df: pd.DataFrame) -> str:
     return df.to_json(orient="records")
 
 
+def _df_to_gdf_points(df: pd.DataFrame) -> gpd.GeoDataFrame:
+    return gpd.GeoDataFrame(
+        df, crs={"init": "epsg:4326"}, geometry=gpd.points_from_xy(df["lon"], df["lat"])
+    )
+
+
 def _send_request(url, params=None):
     r = requests.get(url, auth=(OOI_USERNAME, OOI_TOKEN), params=params)
     if r.status_code == 200:
@@ -230,8 +237,13 @@ def _retrieve_site_infrastructures_and_instruments(
 @bp.route("/sites")
 def get_sites():
     version = request.args.get("ver", CURRENT_API_VERSION, type=float)
+    geojson = request.args.get("geojson", "true", type=bool)
     if version == CURRENT_API_VERSION:
-        results = _fetch_table("sites", record=True)
+        tabledf = _fetch_table("sites")
+        if geojson == "true":
+            results = _df_to_gdf_points(tabledf).to_json()
+        else:
+            results = _df_to_record(tabledf)
     elif version == 1.1:
         resp = requests.get(f"{OLD_CAVA_API_BASE}/v1_1/sites").json()
         results = json.dumps(resp)
@@ -296,7 +308,9 @@ def get_instruments_catalog():
     version = request.args.get("ver", CURRENT_API_VERSION, type=float)
     params = request.args
     if version == CURRENT_API_VERSION:
-        icdf = dataframe.read_json("s3://io2data-test/metadata/instruments-catalog/*.part")
+        icdf = dataframe.read_json(
+            "s3://io2data-test/metadata/instruments-catalog/*.part"
+        )
         res = icdf.compute().to_json(orient="records")
     elif version == 1.1:
         res = json.dumps(requests.get(f"{OLD_CAVA_API_BASE}/v1_1/catalog").json())
@@ -317,7 +331,7 @@ def get_site_list():
         }
         sitesdf = _fetch_table("sites")
         sites = sitesdf[sitesdf.active_display == True].to_dict(orient="records")
-        site_list = []
+        site_list = {}
         for site in sites:
             site_annot = _retrieve_site_annotations(site)
             site.update({"annotations": site_annot})
@@ -331,9 +345,9 @@ def get_site_list():
             site.update({"site_area": site_area})
             site.pop("area_rd")
 
-            site_list.append(site)
+            site_list[site["reference_designator"]] = site
     else:
-        site_list = []
+        site_list = {}
 
     return Response(json.dumps(site_list), mimetype="application/json")
 
