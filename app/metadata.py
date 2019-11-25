@@ -17,6 +17,12 @@ from flask import Response
 from app.db import get_db
 import pandas as pd
 import requests
+from yodapy.utils.parser import parse_annotations_json, unix_time_millis
+from yodapy.utils.conn import fetch_url
+from dateutil import parser
+from dask import dataframe
+from dask.diagnostics import ProgressBar
+import pytz
 
 from typing import Dict, List, TypeVar
 
@@ -32,6 +38,58 @@ OOI_TOKEN = os.environ["OOI_TOKEN"]
 OLD_CAVA_API_BASE = os.environ["OLD_CAVA_API_BASE"]
 
 CURRENT_API_VERSION = 2.0
+
+
+def _get_annotations(
+    reference_designator, stream_method, stream_rd, begin_date, end_date
+):
+    """ Get annotations of the inst pandas Series object """
+    rsession = requests.Session()
+    OOI_M2M_ANNOTATIONS = (
+        "https://ooinet.oceanobservatories.org/api/m2m/12580/anno/find"
+    )
+    params = {
+        "beginDT": unix_time_millis(
+            parser.parse(begin_date).replace(tzinfo=pytz.UTC)
+        ),  # noqa
+        "endDT": unix_time_millis(
+            parser.parse(end_date).replace(tzinfo=pytz.UTC)
+        ),  # noqa
+        "method": stream_method,
+        "refdes": reference_designator,
+        "stream": stream_rd,
+    }
+    rannotations = fetch_url(
+        requests.Request(
+            "GET",
+            OOI_M2M_ANNOTATIONS,
+            auth=(os.environ.get("OOI_USERNAME"), os.environ.get("OOI_TOKEN")),
+            params=params,
+        ).prepare(),
+        session=rsession,
+    )
+    try:
+        parsed_annotations = parse_annotations_json(rannotations.json())
+        return parsed_annotations
+    except Exception:
+        return rannotations.status_code
+
+
+def _get_global_ranges():
+    dest_fold = "io2data-test/metadata/global-ranges"
+    ddf = dataframe.read_parquet(f"s3://{dest_fold}", index=False)
+    rangesdf = ddf.compute()
+    return rangesdf.to_json(orient="records")
+
+
+def _get_data_availability(foldername):
+    dest_fold = "io2data-test/data-availability/{foldername}"
+    res = {}
+    with ProgressBar():
+        dadf = dataframe.read_parquet(f"s3://{dest_fold}", index=False).compute()
+        for idx, val in dadf.iterrows():
+            res[val["dtindex"].astype("int64")] = val["count"].astype("int64")
+    return json.dumps(res)
 
 
 def _fetch_table(table_name: str, record: bool = False) -> Choosable:
@@ -180,6 +238,71 @@ def get_sites():
     else:
         results = ""
     return Response(results, mimetype="application/json")
+
+
+@bp.route("/get_annotations")
+def get_annotations():
+    version = request.args.get("ver", CURRENT_API_VERSION, type=float)
+    params = request.args
+    refdes = params.get("ref", "")
+    stream_method = params.get("stream_method", "")
+    stream_rd = params.get("stream_ref", "")
+    begin_date = params.get("begin_date", "")
+    end_date = params.get("end_date", "")
+    if version == CURRENT_API_VERSION:
+        annotations = _get_annotations(
+            reference_designator=refdes,
+            stream_method=stream_method,
+            stream_rd=stream_rd,
+            begin_date=begin_date,
+            end_date=end_date,
+        )
+    else:
+        annotations = []
+    if isinstance(annotations, pd.DataFrame):
+        return Response(
+            annotations.to_json(orient="records"), mimetype="application/json"
+        )
+    else:
+        return Response(json.dumps(annotations), mimetype="application/json")
+
+
+@bp.route("/global_ranges")
+def get_global_ranges():
+    version = request.args.get("ver", CURRENT_API_VERSION, type=float)
+    if version == CURRENT_API_VERSION:
+        global_ranges = _get_global_ranges()
+    else:
+        global_ranges = []
+
+    return Response(global_ranges, mimetype="application/json")
+
+
+@bp.route("/data_availability")
+def get_data_availability():
+    version = request.args.get("ver", CURRENT_API_VERSION, type=float)
+    params = request.args
+    if version == CURRENT_API_VERSION:
+        refdes = params.get("ref", "")
+        data_availability = _get_data_availability(refdes)
+    else:
+        data_availability = []
+
+    return Response(data_availability, mimetype="application/json")
+
+
+@bp.route("/get_instruments_catalog")
+def get_instruments_catalog():
+    version = request.args.get("ver", CURRENT_API_VERSION, type=float)
+    params = request.args
+    if version == CURRENT_API_VERSION:
+        icdf = dataframe.read_json("s3://io2data-test/metadata/instruments-catalog/*.part")
+        res = icdf.compute().to_json(orient="records")
+    elif version == 1.1:
+        res = json.dumps(requests.get(f"{OLD_CAVA_API_BASE}/v1_1/catalog").json())
+    else:
+        res = []
+    return Response(res, mimetype="application/json")
 
 
 @bp.route("/get_site_list")

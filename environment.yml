@@ -7,4 +7,10 @@ dependencies:
   - sqlalchemy
   - gunicorn
   - geopandas
-  - requests 
+  - requests
+  - dask
+  - fastparquet
+  - toolz
+  - pip
+  - pip:
+    - git+https://github.com/cormorack/yodapy.git
