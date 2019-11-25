@@ -240,6 +240,7 @@ def get_sites():
     geojson = request.args.get("geojson", "true", type=bool)
     if version == CURRENT_API_VERSION:
         tabledf = _fetch_table("sites")
+        tabledf = tabledf[tabledf.active_display == True]
         if geojson == "true":
             results = _df_to_gdf_points(tabledf).to_json()
         else:
