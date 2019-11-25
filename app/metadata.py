@@ -17,6 +17,7 @@ from flask import Response
 from app.db import get_db
 import pandas as pd
 import geopandas as gpd
+from shapely.geometry import Polygon
 import requests
 from yodapy.utils.parser import parse_annotations_json, unix_time_millis
 from yodapy.utils.conn import fetch_url
@@ -146,6 +147,10 @@ def _send_request(url, params=None):
         print(r.status_code)
 
 
+def _get_poly(row):
+    return Polygon(json.loads(row))
+
+
 def _retrieve_site_annotations(site: Dict) -> List[Dict]:
     annot = _send_request(
         "/".join([BASE_URL, M2M_URL, str(12580), "anno/find"]),
@@ -232,6 +237,26 @@ def _retrieve_site_infrastructures_and_instruments(
         infrastructure_list.append(infrastructure)
 
     return infrastructure_list
+
+
+@bp.route("/areas")
+def get_site_areas():
+    version = request.args.get("ver", CURRENT_API_VERSION, type=float)
+    geojson = request.args.get("geojson", "true", type=bool)
+    if version == CURRENT_API_VERSION:
+        tabledf = _fetch_table("areas")
+        if geojson == "true":
+            tabledf.loc[:, "geometry"] = tabledf.coordinates.apply(_get_poly)
+            tabledf = tabledf.drop("coordinates", axis=1)
+            gdf = gpd.GeoDataFrame(
+                tabledf, crs={"init": "epsg:4326"}, geometry=tabledf["geometry"]
+            )
+            results = gdf.to_json()
+        else:
+            results = _df_to_record(tabledf)
+    else:
+        results = ""
+    return Response(results, mimetype="application/json")
 
 
 @bp.route("/sites")
@@ -358,16 +383,6 @@ def get_arrays():
     version = request.args.get("ver", CURRENT_API_VERSION, type=float)
     if version == CURRENT_API_VERSION:
         results = _fetch_table("arrays", record=True)
-    else:
-        results = ""
-    return Response(results, mimetype="application/json")
-
-
-@bp.route("/areas")
-def get_areas():
-    version = request.args.get("ver", CURRENT_API_VERSION, type=float)
-    if version == CURRENT_API_VERSION:
-        results = _fetch_table("areas", record=True)
     else:
         results = ""
     return Response(results, mimetype="application/json")
