@@ -96,7 +96,7 @@ def _get_data_availability(foldername):
 
 def _fetch_table(table_name: str, record: bool = False) -> Choosable:
     db = get_db()
-    tabledf = pd.read_sql_table(table_name, con=db)
+    tabledf = pd.read_sql_table(table_name, con=db).fillna('')
     if record:
         tabledf = _df_to_record(tabledf)
     return tabledf
@@ -135,8 +135,12 @@ def _df_to_gdf_points(df: pd.DataFrame) -> gpd.GeoDataFrame:
     )
 
 
-def _send_request(url, params=None):
-    r = requests.get(url, auth=(OOI_USERNAME, OOI_TOKEN), params=params)
+def _send_request(url, params=None, timeout=None):
+    SESSION = requests.Session()
+    ADAPTER = requests.adapters.HTTPAdapter(max_retries=0)
+    SESSION.mount("http://", ADAPTER)
+    SESSION.mount("https://", ADAPTER)
+    r = SESSION.get(url, auth=(OOI_USERNAME, OOI_TOKEN), params=params, timeout=timeout)
     if r.status_code == 200:
         try:
             return r.json()
@@ -152,49 +156,54 @@ def _get_poly(row):
 
 
 def _retrieve_site_annotations(site: Dict) -> List[Dict]:
-    annot = _send_request(
-        "/".join([BASE_URL, M2M_URL, str(12580), "anno/find"]),
-        params={"refdes": site["reference_designator"]},
-    )
-
-    if isinstance(annot, list):
-        anndf = pd.DataFrame(annot)
-        if len(anndf) > 0:
-            site_annot = anndf[anndf["stream"].isna() & anndf["node"].isna()].copy()
-            if len(site_annot) > 0:
-                site_annot.loc[:, "reference_designator"] = site["reference_designator"]
-                site_annot = site_annot[
-                    [
-                        "reference_designator",
-                        "subsite",
-                        "node",
-                        "sensor",
-                        "method",
-                        "stream",
-                        "parameters",
-                        "beginDT",
-                        "endDT",
-                        "annotation",
-                        "id",
-                        "source",
-                        "qcFlag",
-                        "exclusionFlag",
+    try:
+        annot = _send_request(
+            "/".join([BASE_URL, M2M_URL, str(12580), "anno/find"]),
+            params={"refdes": site["reference_designator"]},
+            timeout=1,
+        )
+        if isinstance(annot, list):
+            anndf = pd.DataFrame(annot)
+            if len(anndf) > 0:
+                site_annot = anndf[anndf["stream"].isna() & anndf["node"].isna()].copy()
+                if len(site_annot) > 0:
+                    site_annot.loc[:, "reference_designator"] = site[
+                        "reference_designator"
                     ]
-                ]
-                site_annot = site_annot.fillna("")
-                site_annot = site_annot.rename(
-                    {
-                        "beginDT": "start_date",
-                        "endDT": "end_date",
-                        "annotation": "comment",
-                        "qcFlag": "flag",
-                        "exclusionFlag": "exclude",
-                    },
-                    axis=1,
-                )
-
-                return site_annot.to_dict(orient="records")
-    return []
+                    site_annot = site_annot[
+                        [
+                            "reference_designator",
+                            "subsite",
+                            "node",
+                            "sensor",
+                            "method",
+                            "stream",
+                            "parameters",
+                            "beginDT",
+                            "endDT",
+                            "annotation",
+                            "id",
+                            "source",
+                            "qcFlag",
+                            "exclusionFlag",
+                        ]
+                    ]
+                    site_annot = site_annot.fillna("")
+                    site_annot = site_annot.rename(
+                        {
+                            "beginDT": "start_date",
+                            "endDT": "end_date",
+                            "annotation": "comment",
+                            "qcFlag": "flag",
+                            "exclusionFlag": "exclude",
+                        },
+                        axis=1,
+                    )
+                    return site_annot.to_dict(orient="records")
+        return []
+    except Exception as e:
+        current_app.logger.warning(str(e))
+        return []
 
 
 def _retrieve_site_area(dfdict: Dict, site: Dict) -> Dict:
@@ -212,6 +221,7 @@ def _retrieve_site_area(dfdict: Dict, site: Dict) -> Dict:
     )
     area.update({"array": array})
     area.pop("array_rd")
+    area.update({"wp_page": int(area['wp_page'])})
     return area
 
 
