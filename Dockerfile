@@ -1,7 +1,21 @@
 FROM continuumio/miniconda3:latest
 
-RUN conda update --yes conda \
-    && conda install --yes --freeze-installed \
+RUN apt-get update -yqq \
+  && apt-get install -yqq --no-install-recommends \
+  software-properties-common
+
+# -- Install Python dependencies
+RUN apt-get update -yqq && DEBIAN_FRONTEND=noninteractive apt-get install -yqq --fix-missing --no-install-recommends \
+  build-essential \
+  python3.7 \
+  python3.7-dev \
+  python3-pip \
+  git \
+  wget \
+  redis-tools \
+  && apt-get -q clean
+
+RUN conda install --yes --freeze-installed \
     -c conda-forge \
     tini \
     && conda clean -tipsy \

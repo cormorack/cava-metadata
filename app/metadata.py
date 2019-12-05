@@ -239,6 +239,11 @@ def _retrieve_site_infrastructures_and_instruments(
     return infrastructure_list
 
 
+@bp.route("/status")
+def get_server_status():
+    return "Metadata service is up."
+
+
 @bp.route("/areas")
 def get_site_areas():
     version = request.args.get("ver", CURRENT_API_VERSION, type=float)
