@@ -85,18 +85,24 @@ def _get_global_ranges():
 
 
 def _get_data_availability(foldername):
-    dest_fold = "io2data-test/data-availability/{foldername}"
+    icdf = dataframe.read_json("s3://io2data-test/metadata/instruments-catalog/*.part")
+    inst_list = icdf[icdf.instrument_rd.str.match(foldername)].compute()
     res = {}
-    with ProgressBar():
-        dadf = dataframe.read_parquet(f"s3://{dest_fold}", index=False).compute()
-        for idx, val in dadf.iterrows():
-            res[val["dtindex"].astype("int64")] = val["count"].astype("int64")
-    return json.dumps(res)
+    if len(inst_list) == 1:
+        inst = inst_list.iloc[0]
+        dest_fold = f"io2data-test/data-availability/{inst.data_table}"
+        with ProgressBar():
+            dadf = dataframe.read_parquet(f"s3://{dest_fold}", index=False).compute()
+            for idx, val in dadf.iterrows():
+                res[str(val["dtindex"].astype("int64"))] = int(
+                    val["count"].astype("int64")
+                )
+    return res
 
 
 def _fetch_table(table_name: str, record: bool = False) -> Choosable:
     db = get_db()
-    tabledf = pd.read_sql_table(table_name, con=db).fillna('')
+    tabledf = pd.read_sql_table(table_name, con=db).fillna("")
     if record:
         tabledf = _df_to_record(tabledf)
     return tabledf
@@ -221,7 +227,7 @@ def _retrieve_site_area(dfdict: Dict, site: Dict) -> Dict:
     )
     area.update({"array": array})
     area.pop("array_rd")
-    area.update({"wp_page": int(area['wp_page'])})
+    area.update({"wp_page": int(area["wp_page"])})
     return area
 
 
@@ -335,13 +341,18 @@ def get_global_ranges():
 def get_data_availability():
     version = request.args.get("ver", CURRENT_API_VERSION, type=float)
     params = request.args
+    refdes = params.get("ref", "")
     if version == CURRENT_API_VERSION:
-        refdes = params.get("ref", "")
-        data_availability = _get_data_availability(refdes)
+        data_availability_res = _get_data_availability(refdes)
     else:
-        data_availability = []
+        data_availability_res = {}
 
-    return Response(data_availability, mimetype="application/json")
+    if refdes:
+        data_availability = {refdes: data_availability_res}
+    else:
+        data_availability = {}
+
+    return Response(json.dumps(data_availability), mimetype="application/json")
 
 
 @bp.route("/get_instruments_catalog")
