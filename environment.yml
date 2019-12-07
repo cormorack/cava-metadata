@@ -8,6 +8,7 @@ dependencies:
   - gunicorn
   - geopandas
   - requests
+  - flask-cors
   - dask
   - fastparquet
   - toolz
