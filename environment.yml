@@ -9,6 +9,7 @@ dependencies:
   - geopandas
   - requests
   - flask-cors
+  - redis-py
   - dask
   - fastparquet
   - toolz

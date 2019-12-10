@@ -15,6 +15,7 @@ import json
 from werkzeug.security import check_password_hash, generate_password_hash
 from flask import Response
 from app.db import get_db
+import redis
 import pandas as pd
 import geopandas as gpd
 from shapely.geometry import Polygon
@@ -38,6 +39,13 @@ M2M_URL = "api/m2m"
 OOI_USERNAME = os.environ["OOI_USERNAME"]
 OOI_TOKEN = os.environ["OOI_TOKEN"]
 OLD_CAVA_API_BASE = os.environ["OLD_CAVA_API_BASE"]
+
+try:
+    redis_cache = redis.Redis(
+        host=os.environ["REDIS_HOST"], port=int(os.environ["REDIS_PORT"]), db=0
+    )
+except Exception as e:
+    print(e)
 
 CURRENT_API_VERSION = 2.0
 
@@ -88,8 +96,17 @@ def _get_data_availability(foldername):
     icdf = dataframe.read_json("s3://io2data-test/metadata/instruments-catalog/*.part")
     inst_list = icdf[icdf.instrument_rd.str.match(foldername)].compute()
     res = {}
+    inst = None
     if len(inst_list) == 1:
         inst = inst_list.iloc[0]
+    else:
+        for idx, row in inst_list.iterrows():
+            if (row["stream_rd"] == row["instrument"]["preferred_stream"]) and (
+                row["stream_method"] == row["instrument"]["preferred_stream_method"]
+            ):
+                inst = row
+
+    if not isinstance(inst, type(None)):
         dest_fold = f"io2data-test/data-availability/{inst.data_table}"
         with ProgressBar():
             dadf = dataframe.read_parquet(f"s3://{dest_fold}", index=False).compute()
@@ -375,29 +392,42 @@ def get_instruments_catalog():
 def get_site_list():
     version = request.args.get("ver", CURRENT_API_VERSION, type=float)
     if version == CURRENT_API_VERSION:
-        dfdict = {
-            "infrastructures": _fetch_table("infrastructures"),
-            "instruments": _fetch_table("instruments"),
-            "areas": _fetch_table("areas"),
-            "arrays": _fetch_table("arrays"),
-        }
-        sitesdf = _fetch_table("sites")
-        sites = sitesdf[sitesdf.active_display == True].to_dict(orient="records")
-        site_list = {}
-        for site in sites:
-            site_annot = _retrieve_site_annotations(site)
-            site.update({"annotations": site_annot})
+        try:
+            results = redis_cache.get("site-list")
+            if results:
+                current_app.logger.info("Retrieved from cache...")
+                site_list = json.loads(results)
+            else:
+                current_app.logger.info("Not cached.")
+                dfdict = {
+                    "infrastructures": _fetch_table("infrastructures"),
+                    "instruments": _fetch_table("instruments"),
+                    "areas": _fetch_table("areas"),
+                    "arrays": _fetch_table("arrays"),
+                }
+                sitesdf = _fetch_table("sites")
+                sites = sitesdf[sitesdf.active_display == True].to_dict(
+                    orient="records"
+                )
+                site_list = {}
+                for site in sites:
+                    site_annot = _retrieve_site_annotations(site)
+                    site.update({"annotations": site_annot})
 
-            infrastructure_list = _retrieve_site_infrastructures_and_instruments(
-                dfdict, site
-            )
-            site.update({"infrastructures": infrastructure_list})
+                    infrastructure_list = _retrieve_site_infrastructures_and_instruments(
+                        dfdict, site
+                    )
+                    site.update({"infrastructures": infrastructure_list})
 
-            site_area = _retrieve_site_area(dfdict, site)
-            site.update({"site_area": site_area})
-            site.pop("area_rd")
+                    site_area = _retrieve_site_area(dfdict, site)
+                    site.update({"site_area": site_area})
+                    site.pop("area_rd")
 
-            site_list[site["reference_designator"]] = site
+                    site_list[site["reference_designator"]] = site
+
+                redis_cache.set("site-list", json.dumps(site_list), ex=3600)
+        except Exception as e:
+            current_app.logger.error(f"Exception occured: {e}", exc_info=True)
     else:
         site_list = {}
 
