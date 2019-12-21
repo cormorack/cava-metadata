@@ -318,29 +318,38 @@ def get_sites():
 
 @bp.route("/get_annotations")
 def get_annotations():
+    # TODO: Add an indicator of M2M Being down when annotations count is 0
     version = request.args.get("ver", CURRENT_API_VERSION, type=float)
     params = request.args
-    refdes = params.get("ref", "")
-    stream_method = params.get("stream_method", "")
-    stream_rd = params.get("stream_ref", "")
-    begin_date = params.get("begin_date", "")
-    end_date = params.get("end_date", "")
+    rd_list = params.get("ref", "").split(",")
+    # stream_method = params.get("stream_method", "")
+    # stream_rd = params.get("stream_ref", "")
+    begin_date = params.get("start_dt", "")
+    end_date = params.get("end_dt", "")
+    annotations = {"annotations": {}, "count": 0}
     if version == CURRENT_API_VERSION:
-        annotations = _get_annotations(
-            reference_designator=refdes,
-            stream_method=stream_method,
-            stream_rd=stream_rd,
-            begin_date=begin_date,
-            end_date=end_date,
-        )
-    else:
-        annotations = []
-    if isinstance(annotations, pd.DataFrame):
-        return Response(
-            annotations.to_json(orient="records"), mimetype="application/json"
-        )
-    else:
-        return Response(json.dumps(annotations), mimetype="application/json")
+        count = 0
+        for rd in rd_list:
+            r = rd.split("-")
+            refdes = "-".join(r[:4])
+            stream_method = r[-2]
+            stream_rd = r[-1]
+            anno_df = _get_annotations(
+                reference_designator=refdes,
+                stream_method=stream_method,
+                stream_rd=stream_rd,
+                begin_date=begin_date,
+                end_date=end_date,
+            )
+            anno = []
+            if isinstance(anno_df, pd.DataFrame):
+                anno = json.loads(anno_df.to_json(orient="records"))
+            count += len(anno)
+
+            annotations["annotations"].update({refdes: anno})
+        annotations["count"] = count
+
+    return Response(json.dumps(annotations), mimetype="application/json")
 
 
 @bp.route("/global_ranges")
