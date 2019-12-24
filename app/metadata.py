@@ -36,6 +36,8 @@ Choosable = TypeVar("Choosable", str, pd.DataFrame)
 BASE_URL = "https://ooinet.oceanobservatories.org"
 M2M_URL = "api/m2m"
 
+BUCKET_NAME = os.environ.get("DATA_BUCKET", "io2data-test")
+
 OOI_USERNAME = os.environ["OOI_USERNAME"]
 OOI_TOKEN = os.environ["OOI_TOKEN"]
 OLD_CAVA_API_BASE = os.environ["OLD_CAVA_API_BASE"]
@@ -86,14 +88,14 @@ def _get_annotations(
 
 
 def _get_global_ranges():
-    dest_fold = "io2data-test/metadata/global-ranges"
+    dest_fold = f"{BUCKET_NAME}/metadata/global-ranges"
     ddf = dataframe.read_parquet(f"s3://{dest_fold}", index=False)
     rangesdf = ddf.compute()
     return rangesdf.to_json(orient="records")
 
 
 def _get_data_availability(foldername):
-    icdf = dataframe.read_json("s3://io2data-test/metadata/instruments-catalog/*.part")
+    icdf = dataframe.read_json(f"s3://{BUCKET_NAME}/metadata/instruments-catalog/*.part")
     inst_list = icdf[icdf.instrument_rd.str.match(foldername)].compute()
     res = {}
     inst = None
@@ -107,7 +109,7 @@ def _get_data_availability(foldername):
                 inst = row
 
     if not isinstance(inst, type(None)):
-        dest_fold = f"io2data-test/data-availability/{inst.data_table}"
+        dest_fold = f"{BUCKET_NAME}/data-availability/{inst.data_table}"
         with ProgressBar():
             dadf = dataframe.read_parquet(f"s3://{dest_fold}", index=False).compute()
             for idx, val in dadf.iterrows():
@@ -387,7 +389,7 @@ def get_instruments_catalog():
     params = request.args
     if version == CURRENT_API_VERSION:
         icdf = dataframe.read_json(
-            "s3://io2data-test/metadata/instruments-catalog/*.part"
+            f"s3://{BUCKET_NAME}/metadata/instruments-catalog/*.part"
         )
         res = icdf.compute().to_json(orient="records")
     elif version == 1.1:
