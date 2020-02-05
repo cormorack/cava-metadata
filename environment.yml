@@ -2,7 +2,7 @@ name: metadata-env
 channels:
   - conda-forge
 dependencies:
-  - python=3.6
+  - python=3.7
   - flask
   - sqlalchemy
   - gunicorn
@@ -15,4 +15,4 @@ dependencies:
   - toolz
   - pip
   - pip:
-    - git+https://github.com/cormorack/yodapy.git
+      - git+https://github.com/cormorack/yodapy.git
