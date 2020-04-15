@@ -27,6 +27,9 @@ def create_app(test_config=None):
 
     db.init_app(app)
 
+    from . import creator
+    creator.init_metadata(app)
+
     from . import metadata
 
     app.register_blueprint(metadata.bp)

@@ -29,6 +29,8 @@ import pytz
 
 from typing import Dict, List, TypeVar
 
+from .creator import initialize_metadata
+
 bp = Blueprint("metadata", __name__, url_prefix="/metadata")
 
 Choosable = TypeVar("Choosable", str, pd.DataFrame)
@@ -41,6 +43,9 @@ BUCKET_NAME = os.environ.get("DATA_BUCKET", "io2data-test")
 OOI_USERNAME = os.environ["OOI_USERNAME"]
 OOI_TOKEN = os.environ["OOI_TOKEN"]
 OLD_CAVA_API_BASE = os.environ["OLD_CAVA_API_BASE"]
+
+META_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'meta')
+METADATA = initialize_metadata(META_PATH)
 
 try:
     redis_cache = redis.Redis(
@@ -120,8 +125,9 @@ def _get_data_availability(foldername):
 
 
 def _fetch_table(table_name: str, record: bool = False) -> Choosable:
-    db = get_db()
-    tabledf = pd.read_sql_table(table_name, con=db).fillna("")
+    # db = get_db()
+    # tabledf = pd.read_sql_table(table_name, con=db).fillna("")
+    tabledf = METADATA['dfdict'][table_name]
     if record:
         tabledf = _df_to_record(tabledf)
     return tabledf
@@ -356,11 +362,12 @@ def get_annotations():
 
 @bp.route("/global_ranges")
 def get_global_ranges():
-    version = request.args.get("ver", CURRENT_API_VERSION, type=float)
-    if version == CURRENT_API_VERSION:
-        global_ranges = _get_global_ranges()
-    else:
-        global_ranges = []
+    global_ranges = METADATA['global_ranges'].to_json(orient='records')
+    # version = request.args.get("ver", CURRENT_API_VERSION, type=float)
+    # if version == CURRENT_API_VERSION:
+    #     global_ranges = _get_global_ranges()
+    # else:
+    #     global_ranges = []
 
     return Response(global_ranges, mimetype="application/json")
 
@@ -385,17 +392,18 @@ def get_data_availability():
 
 @bp.route("/get_instruments_catalog")
 def get_instruments_catalog():
-    version = request.args.get("ver", CURRENT_API_VERSION, type=float)
-    params = request.args
-    if version == CURRENT_API_VERSION:
-        icdf = dataframe.read_json(
-            f"s3://{BUCKET_NAME}/metadata/instruments-catalog/*.part"
-        )
-        res = icdf.compute().to_json(orient="records")
-    elif version == 1.1:
-        res = json.dumps(requests.get(f"{OLD_CAVA_API_BASE}/v1_1/catalog").json())
-    else:
-        res = []
+    # version = request.args.get("ver", CURRENT_API_VERSION, type=float)
+    # params = request.args
+    # if version == CURRENT_API_VERSION:
+    #     icdf = dataframe.read_json(
+    #         f"s3://{BUCKET_NAME}/metadata/instruments-catalog/*.part"
+    #     )
+    #     res = icdf.compute().to_json(orient="records")
+    # elif version == 1.1:
+    #     res = json.dumps(requests.get(f"{OLD_CAVA_API_BASE}/v1_1/catalog").json())
+    # else:
+    #     res = []
+    res = json.dumps(METADATA['catalog_list'])
     return Response(res, mimetype="application/json")
 
 

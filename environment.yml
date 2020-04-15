@@ -13,6 +13,7 @@ dependencies:
   - dask
   - fastparquet
   - toolz
+  - xlrd
   - pip
   - pip:
       - git+https://github.com/cormorack/yodapy.git
