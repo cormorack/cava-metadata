@@ -100,7 +100,9 @@ def _get_global_ranges():
 
 
 def _get_data_availability(foldername):
-    icdf = dataframe.read_json(f"s3://{BUCKET_NAME}/metadata/instruments-catalog/*.part")
+    icdf = dataframe.read_json(
+        f"s3://{BUCKET_NAME}/metadata/instruments-catalog/*.part"
+    )
     inst_list = icdf[icdf.instrument_rd.str.match(foldername)].compute()
     res = {}
     inst = None
@@ -108,15 +110,20 @@ def _get_data_availability(foldername):
         inst = inst_list.iloc[0]
     else:
         for idx, row in inst_list.iterrows():
-            if (row["stream_rd"] == row["instrument"]["preferred_stream"]) and (
-                row["stream_method"] == row["instrument"]["preferred_stream_method"]
+            if (
+                row["stream_rd"] == row["instrument"]["preferred_stream"]
+            ) and (
+                row["stream_method"]
+                == row["instrument"]["preferred_stream_method"]
             ):
                 inst = row
 
     if not isinstance(inst, type(None)):
         dest_fold = f"{BUCKET_NAME}/data-availability/{inst.data_table}"
         with ProgressBar():
-            dadf = dataframe.read_parquet(f"s3://{dest_fold}", index=False).compute()
+            dadf = dataframe.read_parquet(
+                f"s3://{dest_fold}", index=False
+            ).compute()
             for idx, val in dadf.iterrows():
                 res[str(val["dtindex"].astype("int64"))] = int(
                     val["count"].astype("int64")
@@ -162,7 +169,9 @@ def _df_to_record(df: pd.DataFrame) -> str:
 
 def _df_to_gdf_points(df: pd.DataFrame) -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(
-        df, crs={"init": "epsg:4326"}, geometry=gpd.points_from_xy(df["lon"], df["lat"])
+        df,
+        crs={"init": "epsg:4326"},
+        geometry=gpd.points_from_xy(df["lon"], df["lat"]),
     )
 
 
@@ -171,7 +180,9 @@ def _send_request(url, params=None, timeout=None):
     ADAPTER = requests.adapters.HTTPAdapter(max_retries=0)
     SESSION.mount("http://", ADAPTER)
     SESSION.mount("https://", ADAPTER)
-    r = SESSION.get(url, auth=(OOI_USERNAME, OOI_TOKEN), params=params, timeout=timeout)
+    r = SESSION.get(
+        url, auth=(OOI_USERNAME, OOI_TOKEN), params=params, timeout=timeout
+    )
     if r.status_code == 200:
         try:
             return r.json()
@@ -196,7 +207,9 @@ def _retrieve_site_annotations(site: Dict) -> List[Dict]:
         if isinstance(annot, list):
             anndf = pd.DataFrame(annot)
             if len(anndf) > 0:
-                site_annot = anndf[anndf["stream"].isna() & anndf["node"].isna()].copy()
+                site_annot = anndf[
+                    anndf["stream"].isna() & anndf["node"].isna()
+                ].copy()
                 if len(site_annot) > 0:
                     site_annot.loc[:, "reference_designator"] = site[
                         "reference_designator"
@@ -259,7 +272,9 @@ def _retrieve_site_area(dfdict: Dict, site: Dict) -> Dict:
 def _retrieve_instruments(dfdict: Dict, infrastructure: Dict) -> List[Dict]:
     inst = dfdict["instruments"]
     return inst[
-        inst.reference_designator.str.contains(infrastructure["reference_designator"])
+        inst.reference_designator.str.contains(
+            infrastructure["reference_designator"]
+        )
     ].to_dict(orient="records")
 
 
@@ -295,7 +310,9 @@ def get_site_areas():
             tabledf.loc[:, "geometry"] = tabledf.coordinates.apply(_get_poly)
             tabledf = tabledf.drop("coordinates", axis=1)
             gdf = gpd.GeoDataFrame(
-                tabledf, crs={"init": "epsg:4326"}, geometry=tabledf["geometry"]
+                tabledf,
+                crs={"init": "epsg:4326"},
+                geometry=tabledf["geometry"],
             )
             results = gdf.to_json()
         else:
@@ -370,6 +387,20 @@ def get_global_ranges():
     #     global_ranges = []
 
     return Response(global_ranges, mimetype="application/json")
+
+
+@bp.route("/get_deployments")
+def get_deployments():
+    params = request.args
+    refdes = params.get("refdes", "")
+    deployments = list(
+        filter(
+            lambda dep: dep['reference_designator'] == refdes,
+            METADATA['deployments_list'],
+        )
+    )
+
+    return Response(json.dumps(deployments), mimetype="application/json")
 
 
 @bp.route("/data_availability")
@@ -509,7 +540,9 @@ def get_catalog():
     limit = request.args.get("limit", 20, type=int)
     page = request.args.get("page", 1, type=int)
     if version == CURRENT_API_VERSION:
-        results = json.loads(_fetch_catalog(page=page, limit=limit, record=True))
+        results = json.loads(
+            _fetch_catalog(page=page, limit=limit, record=True)
+        )
         if limit == -1 or page == -1:
             limit = len(results)
             page = "all"
