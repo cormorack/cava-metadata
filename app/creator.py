@@ -461,11 +461,11 @@ def initialize_metadata(meta_path='.'):
         with open(metadata_cache, 'rb') as f:
             metadata = pickle.load(f)
 
-        if (
-            datetime.datetime.utcnow()
-            - pd.to_datetime(metadata['last_updated'])
-        ).days > 0:
-            metadata = create_metadata(meta_path)
+        # if (
+        #     datetime.datetime.utcnow()
+        #     - pd.to_datetime(metadata['last_updated'])
+        # ).days > 0:
+        #     metadata = create_metadata(meta_path)
     else:
         metadata = create_metadata(meta_path)
 

@@ -305,7 +305,8 @@ def get_site_areas():
     version = request.args.get("ver", CURRENT_API_VERSION, type=float)
     geojson = request.args.get("geojson", "true", type=bool)
     if version == CURRENT_API_VERSION:
-        tabledf = _fetch_table("areas")
+        # for now drop empty coordinates
+        tabledf = _fetch_table("areas").dropna(subset=['coordinates'])
         if geojson == "true":
             tabledf.loc[:, "geometry"] = tabledf.coordinates.apply(_get_poly)
             tabledf = tabledf.drop("coordinates", axis=1)
