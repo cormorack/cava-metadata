@@ -100,10 +100,8 @@ def _get_global_ranges():
 
 
 def _get_data_availability(foldername):
-    icdf = dataframe.read_json(
-        f"s3://{BUCKET_NAME}/metadata/instruments-catalog/*.part"
-    )
-    inst_list = icdf[icdf.instrument_rd.str.match(foldername)].compute()
+    icdf = pd.DataFrame(METADATA['catalog_list'])
+    inst_list = icdf[icdf.instrument_rd.str.match(foldername)]
     res = {}
     inst = None
     if len(inst_list) == 1:
@@ -119,7 +117,7 @@ def _get_data_availability(foldername):
                 inst = row
 
     if not isinstance(inst, type(None)):
-        dest_fold = f"{BUCKET_NAME}/data-availability/{inst.data_table}"
+        dest_fold = f"ooi-data/data-availability/{inst.data_table}"
         with ProgressBar():
             dadf = dataframe.read_parquet(
                 f"s3://{dest_fold}", index=False
