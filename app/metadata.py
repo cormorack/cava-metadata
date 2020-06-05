@@ -117,7 +117,7 @@ def _get_data_availability(foldername):
                 inst = row
 
     if not isinstance(inst, type(None)):
-        dest_fold = f"ooi-data/data-availability/{inst.data_table}"
+        dest_fold = f"ooi-data/data_availability/{inst.data_table}"
         with ProgressBar():
             dadf = dataframe.read_parquet(
                 f"s3://{dest_fold}", index=False
