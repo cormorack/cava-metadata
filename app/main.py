@@ -16,7 +16,7 @@ from .core.config import (
 )
 from .scripts import LoadMeta
 
-logger = logging.getLogger("api")
+logger = logging.getLogger(f"{SERVICE_ID}-app")
 
 app = FastAPI(
     title=SERVICE_NAME,
@@ -38,7 +38,7 @@ app.add_middleware(
 
 @app.get("/", include_in_schema=False)
 def home():
-    return RedirectResponse(url="/metadata")
+    return RedirectResponse(url=f"/{SERVICE_ID}")
 
 
 @app.on_event("startup")
@@ -46,4 +46,6 @@ def startup_event():
     LoadMeta()
 
 
-app.include_router(metadata.router, prefix=f"/{SERVICE_ID}", tags=["metadata"])
+app.include_router(
+    metadata.router, prefix=f"/{SERVICE_ID}", tags=[f"{SERVICE_ID}"]
+)
