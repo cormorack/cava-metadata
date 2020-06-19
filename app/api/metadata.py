@@ -8,6 +8,7 @@ import pytz
 import redis
 from dask import dataframe
 from dateutil import parser
+from shapely.geometry import Polygon
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..core.config import (
@@ -92,6 +93,10 @@ async def _get_annotations(
         return annodf
 
 
+def _get_poly(row):
+    return Polygon(json.loads(row))
+
+
 def _get_data_availability(refdes):
     icdf = pd.DataFrame(META["catalog_list"])
     inst_list = icdf[icdf.instrument_rd.str.match(refdes)]
@@ -125,6 +130,28 @@ def _get_data_availability(refdes):
 async def get_arrays(version: bool = Depends(_check_version)):
     if version:
         results = await _fetch_table("arrays", record=True)
+    return results
+
+
+@router.get("/areas")
+async def get_site_areas(
+    version: bool = Depends(_check_version), geojson: bool = True
+):
+    if version:
+        # for now drop empty coordinates
+        tabledf = await _fetch_table("areas")
+        tabledf = tabledf.dropna(subset=['coordinates'])
+        if geojson:
+            tabledf.loc[:, "geometry"] = tabledf.coordinates.apply(_get_poly)
+            tabledf = tabledf.drop("coordinates", axis=1)
+            gdf = gpd.GeoDataFrame(
+                tabledf,
+                crs={"init": "epsg:4326"},
+                geometry=tabledf["geometry"],
+            )
+            results = json.loads(gdf.to_json())
+        else:
+            results = _df_to_record(tabledf)
     return results
 
 
