@@ -269,7 +269,6 @@ class LoadMeta(Loader):
         self._dfdict = {}
         self._daemon = False
 
-        self.fetch_creds()
         self.start()
 
     def run(self):
@@ -335,6 +334,7 @@ class LoadMeta(Loader):
             self._perform_refresh(metadata_cache)
 
     def read_cava_assets(self):
+        self.fetch_creds()
         gc = gspread.service_account()
         wks = gc.open('CAVA_Assets')
         for ws in wks.worksheets():
@@ -349,7 +349,9 @@ class LoadMeta(Loader):
                 'Parameters',
             ]:
                 lower_name = name.lower()
-                self._dfdict[lower_name] = pd.DataFrame(ws.get_all_records())
+                df = pd.DataFrame(ws.get_all_records())
+                df = df.replace({'TRUE': True, 'FALSE': False})
+                self._dfdict[lower_name] = df
 
     def fetch_creds(self):
         self._fs.get(

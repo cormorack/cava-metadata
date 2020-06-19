@@ -18,6 +18,8 @@ from ..utils.parsers import parse_annotations_json, unix_time_millis
 from .cables import RSN_CABLE
 
 router = APIRouter()
+
+logging.root.setLevel(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 try:

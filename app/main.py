@@ -37,7 +37,7 @@ def home():
 
 @app.on_event("startup")
 def startup_event():
-    LoadMeta().start()
+    LoadMeta()
 
 
 app.include_router(metadata.router, prefix=f'/{SERVICE_ID}', tags=['metadata'])
