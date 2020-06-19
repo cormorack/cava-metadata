@@ -34,14 +34,14 @@ TOKEN = os.environ.get("OOI_TOKEN", "")
 
 # File Systems Configurations
 FILE_SYSTEMS = {
-    "minio_s3": fsspec.filesystem("s3", client_kwargs={"endpoint_url": "http://minio:9000"}),
+    "minio_s3": fsspec.filesystem(
+        "s3", client_kwargs={"endpoint_url": "http://minio:9000"}
+    ),
     "aws_s3": fsspec.filesystem(
         "s3",
         skip_instance_cache=True,
         use_listings_cache=False,
-        config_kwargs={'max_pool_connections': 1000},
+        config_kwargs={"max_pool_connections": 1000},
     ),
 }
-GOOGLE_SERVICE_JSON = os.environ.get(
-    'GOOGLE_SERVICE_JSON', '',
-)
+GOOGLE_SERVICE_JSON = os.environ.get("GOOGLE_SERVICE_JSON", "",)

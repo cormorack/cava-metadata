@@ -12,8 +12,12 @@ def unix_time_millis(dt):
 def parse_annotations_json(anno_json):
     """ Clean up annotations json """
     annodf = pd.DataFrame(anno_json).copy()
-    annodf.loc[:, "begin_date"] = annodf.beginDT.apply(lambda t: pd.to_datetime(t, unit="ms"))
-    annodf.loc[:, "end_date"] = annodf.endDT.apply(lambda t: pd.to_datetime(t, unit="ms"))
+    annodf.loc[:, "begin_date"] = annodf.beginDT.apply(
+        lambda t: pd.to_datetime(t, unit="ms")
+    )
+    annodf.loc[:, "end_date"] = annodf.endDT.apply(
+        lambda t: pd.to_datetime(t, unit="ms")
+    )
 
     # Sort descending by end date
     annodf_sorted = annodf.sort_values(by=["end_date"], ascending=False)

@@ -1,3 +1,5 @@
+# flake8: noqa
+
 import json
 
 RSN_CABLE = json.loads(

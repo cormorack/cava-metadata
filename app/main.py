@@ -5,12 +5,18 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 
 from .api import metadata
-from .core.config import (CORS_ORIGINS, CURRENT_API_VERSION,
-                          DOCS_URL, OPENAPI_URL, SERVICE_DESCRIPTION,
-                          SERVICE_ID, SERVICE_NAME)
+from .core.config import (
+    CORS_ORIGINS,
+    CURRENT_API_VERSION,
+    DOCS_URL,
+    OPENAPI_URL,
+    SERVICE_DESCRIPTION,
+    SERVICE_ID,
+    SERVICE_NAME,
+)
 from .scripts import LoadMeta
 
-logger = logging.getLogger('api')
+logger = logging.getLogger("api")
 
 app = FastAPI(
     title=SERVICE_NAME,
@@ -32,7 +38,7 @@ app.add_middleware(
 
 @app.get("/", include_in_schema=False)
 def home():
-    return RedirectResponse(url='/metadata')
+    return RedirectResponse(url="/metadata")
 
 
 @app.on_event("startup")
@@ -40,4 +46,4 @@ def startup_event():
     LoadMeta()
 
 
-app.include_router(metadata.router, prefix=f'/{SERVICE_ID}', tags=['metadata'])
+app.include_router(metadata.router, prefix=f"/{SERVICE_ID}", tags=["metadata"])

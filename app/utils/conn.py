@@ -8,13 +8,17 @@ from ..core.config import TOKEN, USERNAME
 logger = logging.getLogger(__name__)
 
 SESSION = requests.Session()
-a = requests.adapters.HTTPAdapter(max_retries=1000, pool_connections=1000, pool_maxsize=1000)
+a = requests.adapters.HTTPAdapter(
+    max_retries=1000, pool_connections=1000, pool_maxsize=1000
+)
 SESSION.mount("https://", a)
 
 
 def map_concurrency(func, iterator, args=(), max_workers=10):
     results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=max_workers
+    ) as executor:
         # Start the load operations and mark each future with its URL
         future_to_url = {executor.submit(func, i, *args): i for i in iterator}
         for future in concurrent.futures.as_completed(future_to_url):
@@ -24,7 +28,9 @@ def map_concurrency(func, iterator, args=(), max_workers=10):
 
 
 # OOI UTILITY FUNCTIONS ==========================
-def fetch_url(prepped_request, session=None, timeout=120, stream=False, **kwargs):
+def fetch_url(
+    prepped_request, session=None, timeout=120, stream=False, **kwargs
+):
 
     session = session or requests.Session()
     r = session.send(prepped_request, timeout=timeout, stream=stream, **kwargs)
@@ -39,7 +45,7 @@ def fetch_url(prepped_request, session=None, timeout=120, stream=False, **kwargs
         logger.warning(message)
         return r
     else:
-        message = f"Request {prepped_request.url} failed: {r.status_code}, {r.reason}"
+        message = f"Request {prepped_request.url} failed: {r.status_code}, {r.reason}"  # noqa
         logger.warning(message)  # noqa
         return r
 
