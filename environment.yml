@@ -1,19 +1,24 @@
-name: metadata-env
+name: app-env
 channels:
   - conda-forge
 dependencies:
   - python=3.7
-  - flask
+  - fastapi
+  - uvicorn
+  - pymongo
+  - redis-py
+  - nomkl
   - sqlalchemy
+  - fsspec
+  - s3fs
+  - gspread
   - gunicorn
   - geopandas
   - requests
-  - flask-cors
-  - redis-py
   - dask
   - fastparquet
   - toolz
   - xlrd
   - pip
   - pip:
-      - git+https://github.com/cormorack/yodapy.git
+    - gspread==3.6

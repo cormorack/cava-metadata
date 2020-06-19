@@ -1,33 +1,23 @@
-import os
-
-from flask import (
-    Blueprint,
-    flash,
-    g,
-    redirect,
-    render_template,
-    request,
-    session,
-    url_for,
-    current_app,
-)
 import json
-from werkzeug.security import check_password_hash, generate_password_hash
-from flask import Response
-from app.db import get_db
-import redis
-import pandas as pd
+import os
+from typing import Dict, List, TypeVar
+
 import geopandas as gpd
-from shapely.geometry import Polygon
+import pandas as pd
+import pytz
+import redis
 import requests
-from yodapy.utils.parser import parse_annotations_json, unix_time_millis
-from yodapy.utils.conn import fetch_url
-from dateutil import parser
 from dask import dataframe
 from dask.diagnostics import ProgressBar
-import pytz
+from dateutil import parser
+from shapely.geometry import Polygon
 
-from typing import Dict, List, TypeVar
+from app.db import get_db
+from flask import (Blueprint, Response, current_app, flash, g, redirect,
+                   render_template, request, session, url_for)
+from werkzeug.security import check_password_hash, generate_password_hash
+from yodapy.utils.conn import fetch_url
+from yodapy.utils.parser import parse_annotations_json, unix_time_millis
 
 from .creator import initialize_metadata
 
@@ -57,21 +47,13 @@ except Exception as e:
 CURRENT_API_VERSION = 2.0
 
 
-def _get_annotations(
-    reference_designator, stream_method, stream_rd, begin_date, end_date
-):
+def _get_annotations(reference_designator, stream_method, stream_rd, begin_date, end_date):
     """ Get annotations of the inst pandas Series object """
     rsession = requests.Session()
-    OOI_M2M_ANNOTATIONS = (
-        "https://ooinet.oceanobservatories.org/api/m2m/12580/anno/find"
-    )
+    OOI_M2M_ANNOTATIONS = "https://ooinet.oceanobservatories.org/api/m2m/12580/anno/find"
     params = {
-        "beginDT": unix_time_millis(
-            parser.parse(begin_date).replace(tzinfo=pytz.UTC)
-        ),  # noqa
-        "endDT": unix_time_millis(
-            parser.parse(end_date).replace(tzinfo=pytz.UTC)
-        ),  # noqa
+        "beginDT": unix_time_millis(parser.parse(begin_date).replace(tzinfo=pytz.UTC)),  # noqa
+        "endDT": unix_time_millis(parser.parse(end_date).replace(tzinfo=pytz.UTC)),  # noqa
         "method": stream_method,
         "refdes": reference_designator,
         "stream": stream_rd,
@@ -108,24 +90,17 @@ def _get_data_availability(foldername):
         inst = inst_list.iloc[0]
     else:
         for idx, row in inst_list.iterrows():
-            if (
-                row["stream_rd"] == row["instrument"]["preferred_stream"]
-            ) and (
-                row["stream_method"]
-                == row["instrument"]["preferred_stream_method"]
+            if (row["stream_rd"] == row["instrument"]["preferred_stream"]) and (
+                row["stream_method"] == row["instrument"]["preferred_stream_method"]
             ):
                 inst = row
 
     if not isinstance(inst, type(None)):
         dest_fold = f"ooi-data/data_availability/{inst.data_table}"
         with ProgressBar():
-            dadf = dataframe.read_parquet(
-                f"s3://{dest_fold}", index=False
-            ).compute()
+            dadf = dataframe.read_parquet(f"s3://{dest_fold}", index=False).compute()
             for idx, val in dadf.iterrows():
-                res[str(val["dtindex"].astype("int64"))] = int(
-                    val["count"].astype("int64")
-                )
+                res[str(val["dtindex"].astype("int64"))] = int(val["count"].astype("int64"))
     return res
 
 
@@ -167,9 +142,7 @@ def _df_to_record(df: pd.DataFrame) -> str:
 
 def _df_to_gdf_points(df: pd.DataFrame) -> gpd.GeoDataFrame:
     return gpd.GeoDataFrame(
-        df,
-        crs={"init": "epsg:4326"},
-        geometry=gpd.points_from_xy(df["lon"], df["lat"]),
+        df, crs={"init": "epsg:4326"}, geometry=gpd.points_from_xy(df["lon"], df["lat"]),
     )
 
 
@@ -178,9 +151,7 @@ def _send_request(url, params=None, timeout=None):
     ADAPTER = requests.adapters.HTTPAdapter(max_retries=0)
     SESSION.mount("http://", ADAPTER)
     SESSION.mount("https://", ADAPTER)
-    r = SESSION.get(
-        url, auth=(OOI_USERNAME, OOI_TOKEN), params=params, timeout=timeout
-    )
+    r = SESSION.get(url, auth=(OOI_USERNAME, OOI_TOKEN), params=params, timeout=timeout)
     if r.status_code == 200:
         try:
             return r.json()
@@ -205,13 +176,9 @@ def _retrieve_site_annotations(site: Dict) -> List[Dict]:
         if isinstance(annot, list):
             anndf = pd.DataFrame(annot)
             if len(anndf) > 0:
-                site_annot = anndf[
-                    anndf["stream"].isna() & anndf["node"].isna()
-                ].copy()
+                site_annot = anndf[anndf["stream"].isna() & anndf["node"].isna()].copy()
                 if len(site_annot) > 0:
-                    site_annot.loc[:, "reference_designator"] = site[
-                        "reference_designator"
-                    ]
+                    site_annot.loc[:, "reference_designator"] = site["reference_designator"]
                     site_annot = site_annot[
                         [
                             "reference_designator",
@@ -251,16 +218,8 @@ def _retrieve_site_annotations(site: Dict) -> List[Dict]:
 def _retrieve_site_area(dfdict: Dict, site: Dict) -> Dict:
     areas = dfdict["areas"]
     arrays = dfdict["arrays"]
-    area = (
-        areas[areas.reference_designator.str.contains(site["area_rd"])]
-        .iloc[0]
-        .to_dict()
-    )
-    array = (
-        arrays[arrays.reference_designator.str.contains(area["array_rd"])]
-        .iloc[0]
-        .to_dict()
-    )
+    area = areas[areas.reference_designator.str.contains(site["area_rd"])].iloc[0].to_dict()
+    array = arrays[arrays.reference_designator.str.contains(area["array_rd"])].iloc[0].to_dict()
     area.update({"array": array})
     area.pop("array_rd")
     area.update({"wp_page": int(area["wp_page"])})
@@ -270,15 +229,11 @@ def _retrieve_site_area(dfdict: Dict, site: Dict) -> Dict:
 def _retrieve_instruments(dfdict: Dict, infrastructure: Dict) -> List[Dict]:
     inst = dfdict["instruments"]
     return inst[
-        inst.reference_designator.str.contains(
-            infrastructure["reference_designator"]
-        )
+        inst.reference_designator.str.contains(infrastructure["reference_designator"])
     ].to_dict(orient="records")
 
 
-def _retrieve_site_infrastructures_and_instruments(
-    dfdict: Dict, site: Dict
-) -> List[Dict]:
+def _retrieve_site_infrastructures_and_instruments(dfdict: Dict, site: Dict) -> List[Dict]:
     infra = dfdict["infrastructures"]
     infrastructures = infra[
         infra.reference_designator.str.contains(site["reference_designator"])
@@ -309,9 +264,7 @@ def get_site_areas():
             tabledf.loc[:, "geometry"] = tabledf.coordinates.apply(_get_poly)
             tabledf = tabledf.drop("coordinates", axis=1)
             gdf = gpd.GeoDataFrame(
-                tabledf,
-                crs={"init": "epsg:4326"},
-                geometry=tabledf["geometry"],
+                tabledf, crs={"init": "epsg:4326"}, geometry=tabledf["geometry"],
             )
             results = gdf.to_json()
         else:
@@ -393,10 +346,7 @@ def get_deployments():
     params = request.args
     refdes = params.get("refdes", "")
     deployments = list(
-        filter(
-            lambda dep: dep['reference_designator'] == refdes,
-            METADATA['deployments_list'],
-        )
+        filter(lambda dep: dep['reference_designator'] == refdes, METADATA['deployments_list'],)
     )
 
     return Response(json.dumps(deployments), mimetype="application/json")
@@ -455,9 +405,7 @@ def get_site_list():
                     "arrays": _fetch_table("arrays"),
                 }
                 sitesdf = _fetch_table("sites")
-                sites = sitesdf[sitesdf.active_display == True].to_dict(
-                    orient="records"
-                )
+                sites = sitesdf[sitesdf.active_display == True].to_dict(orient="records")
                 site_list = {}
                 for site in sites:
                     site_annot = _retrieve_site_annotations(site)
@@ -539,9 +487,7 @@ def get_catalog():
     limit = request.args.get("limit", 20, type=int)
     page = request.args.get("page", 1, type=int)
     if version == CURRENT_API_VERSION:
-        results = json.loads(
-            _fetch_catalog(page=page, limit=limit, record=True)
-        )
+        results = json.loads(_fetch_catalog(page=page, limit=limit, record=True))
         if limit == -1 or page == -1:
             limit = len(results)
             page = "all"
