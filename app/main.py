@@ -2,6 +2,7 @@ import logging
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import RedirectResponse
 
 from .api import metadata
 from .core.config import (CORS_ORIGINS, CURRENT_API_VERSION,
@@ -27,6 +28,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/", include_in_schema=False)
+def home():
+    return RedirectResponse(url='/metadata')
 
 
 @app.on_event("startup")

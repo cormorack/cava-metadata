@@ -29,8 +29,8 @@ REDIS_PORT = os.environ.get("REDIS_PORT", 6379)
 # OOI Configurations
 BASE_URL = "https://ooinet.oceanobservatories.org"
 M2M_URL = "api/m2m"
-USERNAME = os.environ.get("OOI_USERNAME", "OOIAPI-RPSGWENK5PZCRH")
-TOKEN = os.environ.get("OOI_TOKEN", "NSRFX7OQH0B")
+USERNAME = os.environ.get("OOI_USERNAME", "")
+TOKEN = os.environ.get("OOI_TOKEN", "")
 
 # File Systems Configurations
 FILE_SYSTEMS = {
@@ -43,5 +43,5 @@ FILE_SYSTEMS = {
     ),
 }
 GOOGLE_SERVICE_JSON = os.environ.get(
-    'GOOGLE_SERVICE_JSON', 'cava-credentials/regional-cabled-array-3e2d547134f0.json',
+    'GOOGLE_SERVICE_JSON', '',
 )
