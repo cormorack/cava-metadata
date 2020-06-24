@@ -14,6 +14,9 @@ CORS_ORIGINS = [
     "http://localhost:8000",
     "http://localhost:5000",
     "http://localhost:4000",
+    "https://appdev.ooica.net",
+    "https://app-dev.ooica.net",
+    "https://app.interactiveoceans.washington.edu",
     "https://api-dev.ooica.net",
     "https://api.interactiveoceans.washington.edu",
 ]
