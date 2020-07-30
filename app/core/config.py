@@ -49,3 +49,4 @@ FILE_SYSTEMS = {
     ),
 }
 GOOGLE_SERVICE_JSON = os.environ.get("GOOGLE_SERVICE_JSON", "",)
+DATA_BUCKET = 'ooi-data'

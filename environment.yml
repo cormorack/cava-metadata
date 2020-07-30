@@ -19,6 +19,7 @@ dependencies:
   - fastparquet
   - toolz
   - xlrd
+  - loguru
   - pip
   - pip:
     - gspread==3.6

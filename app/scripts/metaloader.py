@@ -1,21 +1,23 @@
 import datetime
 import itertools as it
 import json
-import logging
+from loguru import logger
 import os
 import pickle
 
 import gspread
 import pandas as pd
 
-from ..core.config import BASE_PATH, BASE_URL, GOOGLE_SERVICE_JSON, M2M_URL
+from ..core.config import (
+    BASE_PATH,
+    BASE_URL,
+    GOOGLE_SERVICE_JSON,
+    M2M_URL,
+    DATA_BUCKET,
+)
 from ..store import META
 from ..utils.conn import map_concurrency, send_request
 from .baseloader import Loader
-
-logging.root.setLevel(level=logging.INFO)
-
-logger = logging.getLogger(__name__)
 
 
 def get_stream(stream):
@@ -126,6 +128,7 @@ def get_vocab():
 
 
 def get_global_ranges():
+    logger.info("Fetching global ranges ...")
     url = "https://raw.githubusercontent.com/ooi-integration/qc-lookup/master/data_qc_global_range_values.csv"  # noqa
     return parse_global_range_dataframe(pd.read_csv(url))
 
@@ -154,6 +157,7 @@ def get_cava_instruments(dfdict):
 
 
 def compile_instrument_streams(toc_dict):
+    logger.info("Compiling instrument streams ...")
     streams_list = map_concurrency(
         fetch_streams, toc_dict["instruments"], max_workers=30
     )
@@ -162,6 +166,7 @@ def compile_instrument_streams(toc_dict):
 
 
 def compile_instrument_deployments(dfdict):
+    logger.info("Compiling instrument deployments ...")
     inst_list = dfdict["instruments"].reference_designator.values
     dep_list = map_concurrency(retrieve_deployments, inst_list, max_workers=10)
     dep_list = list(it.chain.from_iterable(dep_list))
@@ -277,6 +282,7 @@ def create_catalog_item(stream, dfdict):
 
 
 def create_instruments_catalog(dfdict, streams_list):
+    logger.info("Creating instruments catalog ...")
     cava_instruments = get_cava_instruments(dfdict)
     cava_streams = list(
         filter(
@@ -356,9 +362,11 @@ class LoadMeta(Loader):
         metadata = self.create_metadata()
         META.update(metadata)
 
+        self._logger.info("Pickling metadata ...")
         # Write to pickle
         with open(metadata_cache, "wb") as fp:
             pickle.dump(metadata, fp, pickle.HIGHEST_PROTOCOL)
+        self._logger.info("Done pickling metadata .")
 
     def initialize_metadata(self):
         meta_path = os.path.join(BASE_PATH, "core/meta")
