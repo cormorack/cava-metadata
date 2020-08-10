@@ -378,13 +378,13 @@ class LoadMeta(Loader):
             self._logger.info(
                 f"Metadata last updated: {META['last_updated']}."
             )
-            if (
-                datetime.datetime.utcnow()
-                - pd.to_datetime(META["last_updated"])
-            ).days > 0:
-                self._logger.info("Refreshing stale metadata...")
-                os.unlink(metadata_cache)
-                self._perform_refresh(metadata_cache)
+            # if (
+            #     datetime.datetime.utcnow()
+            #     - pd.to_datetime(META["last_updated"])
+            # ).days > 0:
+            #     self._logger.info("Refreshing stale metadata...")
+            #     os.unlink(metadata_cache)
+            #     self._perform_refresh(metadata_cache)
         else:
             self._perform_refresh(metadata_cache)
 
