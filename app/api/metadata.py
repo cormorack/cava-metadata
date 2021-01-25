@@ -11,17 +11,17 @@ from dateutil import parser
 from shapely.geometry import Polygon
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..core.config import (
+from core.config import (
     BASE_URL,
     CURRENT_API_VERSION,
     M2M_URL,
     REDIS_HOST,
     REDIS_PORT,
 )
-from ..store import META
-from ..utils.conn import send_request
-from ..utils.parsers import parse_annotations_json, unix_time_millis
-from .cables import RSN_CABLE
+from store import META
+from utils.conn import send_request
+from utils.parsers import parse_annotations_json, unix_time_millis
+from api.cables import RSN_CABLE
 
 router = APIRouter()
 

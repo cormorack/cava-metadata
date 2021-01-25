@@ -4,8 +4,8 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 
-from .api import metadata
-from .core.config import (
+from api import metadata
+from core.config import (
     CORS_ORIGINS,
     CURRENT_API_VERSION,
     DOCS_URL,
@@ -14,7 +14,7 @@ from .core.config import (
     SERVICE_ID,
     SERVICE_NAME,
 )
-from .scripts import LoadMeta
+from scripts import LoadMeta
 
 logger = logging.getLogger(f"{SERVICE_ID}-app")
 

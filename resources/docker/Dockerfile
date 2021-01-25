@@ -1,0 +1,1 @@
+FROM cormorack/uvicorn-gunicorn-docker:test

@@ -1,7 +1,7 @@
 from loguru import logger
 import threading
 
-from ..core.config import FILE_SYSTEMS
+from core.config import FILE_SYSTEMS
 
 
 class Loader:

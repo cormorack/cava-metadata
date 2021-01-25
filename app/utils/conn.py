@@ -3,7 +3,7 @@ import logging
 
 import requests
 
-from ..core.config import TOKEN, USERNAME
+from core.config import TOKEN, USERNAME
 
 logger = logging.getLogger(__name__)
 

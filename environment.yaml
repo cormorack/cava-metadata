@@ -20,6 +20,6 @@ dependencies:
   - toolz
   - xlrd
   - loguru
-  - pip
+  - pip=20
   - pip:
     - gspread==3.6

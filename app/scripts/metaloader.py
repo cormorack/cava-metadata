@@ -8,16 +8,16 @@ import pickle
 import gspread
 import pandas as pd
 
-from ..core.config import (
+from core.config import (
     BASE_PATH,
     BASE_URL,
     GOOGLE_SERVICE_JSON,
     M2M_URL,
     DATA_BUCKET,
 )
-from ..store import META
-from ..utils.conn import map_concurrency, send_request
-from .baseloader import Loader
+from store import META
+from utils.conn import map_concurrency, send_request
+from scripts.baseloader import Loader
 
 
 def get_stream(stream):
@@ -312,7 +312,7 @@ class LoadMeta(Loader):
         )
 
         if not os.path.exists(self._gspread_dir):
-            os.mkdir(self._gspread_dir)
+            os.makedirs(self._gspread_dir)
 
         self._dfdict = {}
         self._daemon = False
