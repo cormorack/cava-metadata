@@ -1,0 +1,88 @@
+name: Test Chart
+
+on:
+  push:
+    paths: ["resources/helm/cava-metadata/**", "**/test-chart.yml", ".ci-helpers/common"]
+  pull_request:
+    paths: ["resources/helm/cava-metadata/**", "**/test-chart.yml", ".ci-helpers/common"]
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  SERVICE_NAME: cava-metadata
+  CHART_PATH: ./resources/helm/cava-metadata
+  TEST_CHART_VALUE: .ci-helpers/secrets/dev-test.yaml
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    strategy:
+      # Keep running even if one variation of the job fail
+      fail-fast: false
+      matrix:
+        # We run this job multiple times with different parameterization
+        # specified below, these parameters have no meaning on their own and
+        # gain meaning on how job steps use them.
+        #
+        # k3s-version: https://github.com/rancher/k3s/tags
+        # k3s-channel: https://update.k3s.io/v1-release/channels
+        include:
+          - k3s-channel: v1.18
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install helm
+        run: |
+          curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get-helm-3 | bash
+      - name: Install git-crypt
+        run: sudo apt-get install git-crypt
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET }}
+          aws-region: us-west-2
+      - name: Copy files to the test website with the AWS CLI
+        run: |
+          aws s3 cp ${{ secrets.GIT_CRYPT_KEY }} ./crypt.key
+      - name: Unlock git-crypt Secrets
+        run: git-crypt unlock ./crypt.key && git-crypt status
+      - name: Update chart dependencies
+        run: |
+          helm dependencies update ${{ env.CHART_PATH }}
+      - name: Lint chart's templates
+        run: |
+          helm lint ${{ env.CHART_PATH }} --strict --values ${{ env.TEST_CHART_VALUE }}
+
+      - name: Validate chart's templates can render
+        run: |
+          helm template ${{ env.CHART_PATH }} --values ${{ env.TEST_CHART_VALUE }} 1>/dev/null
+      # Starts a k8s cluster with NetworkPolicy enforcement and installs kubectl
+      #
+      # ref: https://github.com/manics/action-k3s-helm/
+      - uses: manics/action-k3s-helm@v1
+        with:
+          k3s-channel: ${{ matrix.k3s-channel }}
+          metrics-enabled: false
+          traefik-enabled: false
+          docker-enabled: false
+      - name: Apply secrets
+        run: kubectl apply -f .ci-helpers/secrets/cava-secrets.yaml
+      - name: Validate charts' rendered templates are valid k8s resources
+        run: |
+          helm template ${{ env.CHART_PATH }} --validate --values ${{ env.TEST_CHART_VALUE }} 1>/dev/null
+
+      - name: Install chart and await readiness
+        run: |
+          helm install ${{ env.SERVICE_NAME }} ${{ env.CHART_PATH }} --values ${{ env.TEST_CHART_VALUE }}
+
+          . .ci-helpers/common
+          full_namespace_await
+
+      # GitHub Action reference: https://github.com/jupyterhub/action-k8s-namespace-report
+      - name: Kubernetes namespace report
+        uses: jupyterhub/action-k8s-namespace-report@v1
+        if: always()
