@@ -1,0 +1,15 @@
+apiVersion: v1
+entries:
+  cava-metadata:
+  - apiVersion: v2
+    appVersion: 0.1.0
+    created: "2021-01-26T11:44:32.766416707-08:00"
+    description: A Helm chart for Kubernetes
+    digest: c306483a8fd5c3c928b48402d13b94dd08843f3bde636b806727a14980e26d6e
+    icon: https://interactiveoceans.washington.edu/wp-content/uploads/2018/12/interactive-oceans-logo-symbol-only_sm-150x150.png
+    name: cava-metadata
+    type: application
+    urls:
+    - https://cormorack.github.io/cava-metadata/cava-metadata-0.1.0.tgz
+    version: 0.1.0
+generated: "2021-01-26T11:44:32.765610211-08:00"
