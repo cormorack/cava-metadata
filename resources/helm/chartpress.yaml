@@ -1,0 +1,5 @@
+charts:
+  - name: cava-metadata
+    repo:
+      git: cormorack/cava-metadata
+      published: https://cormorack.github.io/cava-metadata/
