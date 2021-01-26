@@ -4,6 +4,9 @@ on:
   pull_request:
     paths-ignore:
       - README.md
+      - "resources/helm/**"
+      - "**/test-chart.yml"
+      - ".ci-helpers/**"
 
 env:
   DOCKER_ORG: cormorack
