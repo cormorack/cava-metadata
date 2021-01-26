@@ -8,6 +8,9 @@ on:
       - '*.*.*'
     paths-ignore:
       - README.md
+      - "resources/helm/**"
+      - "**/test-chart.yml"
+      - ".ci-helpers/**"
   workflow_dispatch:
 
 env:
