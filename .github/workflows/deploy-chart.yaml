@@ -1,0 +1,69 @@
+name: Portal Chart Deployment
+
+on:
+  release:
+    types: [created, edited]
+  push:
+    branches:
+      - "dev"
+    paths: ["resources/helm/cava-metadata/**", "**/test-chart.yml", ".ci-helpers/common"]
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  SERVICE_NAME: cava-metadata
+  CHART_PATH: ./resources/helm/cava-metadata
+  TEST_CHART_VALUE: .ci-helpers/secrets/dev-test.yaml
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          # chartpress requires the full history
+          fetch-depth: 0
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+      - name: Install helm
+        run: |
+          curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get-helm-3 | bash
+      - name: Install git-crypt
+        run: sudo apt-get install git-crypt
+      - name: Install Chartpress
+        run: |
+          pip install chartpress
+          chartpress --help
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET }}
+          aws-region: us-west-2
+      - name: Setup credentials
+        run: |
+          aws s3 cp ${{ secrets.GIT_CRYPT_KEY }} ./crypt.key
+          aws s3 cp ${{ secrets.HELM_DEPLOY_KEY }} ${PWD}/deploy_key
+          chmod 400 ${PWD}/deploy_key
+          GIT_SSH_COMMAND="ssh -i ${PWD}/deploy_key"
+          echo "GIT_SSH_COMMAND=${GIT_SSH_COMMAND}" >> $GITHUB_ENV
+      - name: Unlock git-crypt Secrets
+        run: git-crypt unlock ./crypt.key && git-crypt status
+      - name: Update chart dependencies
+        run: |
+          helm dependencies update ${{ env.CHART_PATH }}
+      - name: Lint chart's templates
+        run: |
+          helm lint ${{ env.CHART_PATH }} --strict --values ${{ env.TEST_CHART_VALUE }}
+
+      - name: Validate chart's templates can render
+        run: |
+          helm template ${{ env.CHART_PATH }} --values ${{ env.TEST_CHART_VALUE }} 1>/dev/null
+      - name: Publish chart
+        run: |
+          chartpress --publish-chart
