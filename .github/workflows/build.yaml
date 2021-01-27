@@ -1,16 +1,16 @@
 name: Build and Push Images
 
 on:
-  push:
-    branches:
-      - dev
-    tags:
-      - '*.*.*'
-    paths-ignore:
-      - README.md
-      - "resources/helm/**"
-      - "**/test-chart.yml"
-      - ".ci-helpers/**"
+  # push:
+  #   branches:
+  #     - dev
+  #   tags:
+  #     - '*.*.*'
+  #   paths-ignore:
+  #     - README.md
+  #     - "resources/helm/**"
+  #     - "**/test-chart.yml"
+  #     - ".ci-helpers/**"
   workflow_dispatch:
 
 env:
