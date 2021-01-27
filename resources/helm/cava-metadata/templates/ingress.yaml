@@ -1,0 +1,22 @@
+{{- if .Values.traefik.expose -}}
+{{- $serviceName := default (include "cava-metadata.name" .) -}}
+{{- $servicePath := .Values.path -}}
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ $serviceName }}
+  labels:
+    {{- include "cava-metadata.labels" . | nindent 4 }}
+    app.kubernetes.io/component: {{ $serviceName }}
+spec:
+  entryPoints:
+  {{- if .Values.traefik.entryPoints }}
+    {{- toYaml .Values.traefik.entryPoints | nindent 4 }}
+  {{- end }}
+  routes:
+    - match: PathPrefix(`{{ $servicePath }}`)
+      kind: Rule
+      services:
+        - name: {{ $serviceName }}
+          port: {{ .Values.service.port }}
+{{- end -}}

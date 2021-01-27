@@ -1,0 +1,37 @@
+charts:
+  - name: cava-metadata
+    repo:
+      git: cormorack/cava-metadata
+      published: https://cormorack.github.io/cava-metadata/
+    images:
+      cava-metadata:
+        # imageName overrides the default name of the image. The default name
+        # is the imagePrefix augmented with the key of this configuration. It
+        # would be jupyterhub/k8s-binderhub in this case.
+        imageName: cormorack/cava-metadata
+        # Build arguments to be passed using docker's --build-arg flag as
+        # --build-arg <key>=<value>. TAG and LAST_COMMIT are expandable.
+        # buildArgs:
+        #   MY_STATIC_BUILD_ARG: "hello world"
+        #   MY_DYNAMIC_BUILD_ARG: "{TAG}-{LAST_COMMIT}"
+        # contextPath is the path to the directory that is to be considered the
+        # current working directory during the build process of the Dockerfile.
+        # This is by default the folder of the Dockerfile. This path should be
+        # set relative to chartpress.yaml.
+        contextPath: ../..
+        # By default, changes to the contextPath will make chartpress rebuild
+        # the image, but this option make that configurable.
+        rebuildOnContextPathChanges: false
+        # Path to the Dockerfile, relative to chartpress.yaml. Defaults to
+        # "images/<image name>/Dockerfile".
+        dockerfilePath: ../docker/Dockerfile
+        # Path(s) in <chart name>/values.yaml to be updated with image name and
+        # tag.
+        valuesPath:
+          - image
+        #   - singleuser.profileList.0.kubespawner_override.image
+        # Additional paths, relative to chartpress.yaml's directory, that should
+        # be used to indicate that a new tag of the image is required, aside
+        # from the contextPath and dockerfilePath for building the image itself.
+        # paths:
+        #   - assets

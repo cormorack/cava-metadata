@@ -1,0 +1,41 @@
+# Default values for cava-media.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+nameOverride: cava-metadata
+# fullnameOverride: cava-media
+path: /metadata
+service:
+  targetPort: 5000
+  portName: http
+  type: ClusterIP
+  port: 80
+  containerPort: 5000
+  servicePortName: http
+image:
+  repository: cormorack/cava-metadata
+  tag: "set-by-chartpress"
+  pullSecrets: []
+  pullPolicy: Always
+replicas: 1
+resources: {}
+env:
+  - name: AWS_ACCESS_KEY_ID
+    value: ""
+  - name: AWS_SECRET_ACCESS_KEY
+    value: ""
+  - name: OOI_TOKEN
+    value: ""
+  - name: OOI_USERNAME
+    value: ""
+  - name: REDIS_HOST
+    value: ""
+  - name: REDIS_PORT
+    value: ""
+  - name: GOOGLE_SERVICE_JSON
+    value: ""
+restartPolicy: Always
+nodeSelector: {}
+traefik:
+  expose: false
+  entryPoints:
+    - web

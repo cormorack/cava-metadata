@@ -1,0 +1,24 @@
+name: app-env
+channels:
+  - conda-forge
+dependencies:
+  - fastapi
+  - uvicorn
+  - pymongo
+  - redis-py
+  - nomkl
+  - sqlalchemy
+  - fsspec
+  - s3fs
+  - gspread
+  - gunicorn
+  - geopandas
+  - requests
+  - dask
+  - fastparquet
+  - toolz
+  - xlrd
+  - loguru
+  - pip=20
+  - pip:
+    - gspread==3.6
