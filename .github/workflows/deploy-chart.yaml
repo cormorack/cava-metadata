@@ -67,7 +67,7 @@ jobs:
         # and require this explicitly setup.
         run: |
           git config --global user.email "github-actions@example.local"
-          git config --global user.name "GitHub Actions user
+          git config --global user.name "GitHub Actions user"
       - name: Publish images and chart with chartpress
         env:
           GITHUB_REPOSITORY: "${{ github.repository }}"
