@@ -62,10 +62,9 @@ jobs:
           context: .
           file: ./resources/docker/Dockerfile
           push: true
-          # Later on use conda and python version
-          # build-args: |
-          #   CONDA_VERSION=${{ env.CONDA_VERSION }}
-          #   PYTHON_VERSION=${{ env.PYTHON_VERSION }}
+          build-args: |
+            CONDA_VERSION=${{ env.CONDA_VERSION }}
+            PYTHON_VERSION=${{ env.PYTHON_VERSION }}
           tags: |
             ${{ env.IMAGE_SPEC }}
             ${{ env.IMAGE_SPEC_LATEST }}
