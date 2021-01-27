@@ -71,5 +71,6 @@ jobs:
       - name: Publish images and chart with chartpress
         env:
           GITHUB_REPOSITORY: "${{ github.repository }}"
+        working-directory: ./resources/helm
         run: |
-          ./.ci-helpers/publish
+          ../../.ci-helpers/publish
