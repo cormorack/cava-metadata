@@ -13,29 +13,29 @@ service:
   servicePortName: http
 image:
   repository: cormorack/cava-metadata
-  tag: latest
+  tag: "set-by-chartpress"
   pullSecrets: []
   pullPolicy: Always
 replicas: 1
 resources: {}
 env:
-- name: AWS_ACCESS_KEY_ID
-  value: ""
-- name: AWS_SECRET_ACCESS_KEY
-  value: ""
-- name: OOI_TOKEN
-  value: ""
-- name: OOI_USERNAME
-  value: ""
-- name: REDIS_HOST
-  value: ""
-- name: REDIS_PORT
-  value: ""
-- name: GOOGLE_SERVICE_JSON
-  value: ""
+  - name: AWS_ACCESS_KEY_ID
+    value: ""
+  - name: AWS_SECRET_ACCESS_KEY
+    value: ""
+  - name: OOI_TOKEN
+    value: ""
+  - name: OOI_USERNAME
+    value: ""
+  - name: REDIS_HOST
+    value: ""
+  - name: REDIS_PORT
+    value: ""
+  - name: GOOGLE_SERVICE_JSON
+    value: ""
 restartPolicy: Always
 nodeSelector: {}
 traefik:
   expose: false
-  entryPoints: 
+  entryPoints:
     - web
