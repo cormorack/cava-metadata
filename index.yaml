@@ -12,4 +12,15 @@ entries:
     urls:
     - https://cormorack.github.io/cava-metadata/cava-metadata-0.1.0.tgz
     version: 0.1.0
-generated: "2021-01-26T11:44:32.765610211-08:00"
+  - apiVersion: v2
+    appVersion: 0.1.0
+    created: "2021-01-27T10:27:41.430638619-08:00"
+    description: A Helm chart for Kubernetes
+    digest: 0f3c582741b69a85ff618fbef184b731121e3803915bc9f3b2e22edb6d401b4f
+    icon: https://interactiveoceans.washington.edu/wp-content/uploads/2018/12/interactive-oceans-logo-symbol-only_sm-150x150.png
+    name: cava-metadata
+    type: application
+    urls:
+    - https://cormorack.github.io/cava-metadata/cava-metadata-0.1.0-n001.h1e0e089.tgz
+    version: 0.1.0-n001.h1e0e089
+generated: "2021-01-27T10:27:41.430183443-08:00"
