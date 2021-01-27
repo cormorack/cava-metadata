@@ -64,6 +64,10 @@ jobs:
       - name: Validate chart's templates can render
         run: |
           helm template ${{ env.CHART_PATH }} --values ${{ env.TEST_CHART_VALUE }} 1>/dev/null
+      - name: Setup Git
+        run: |
+          git config --global user.email "landungs@uw.edu"
+          git config --global user.name "Landung Setiawan"
       - name: Publish chart
         working-directory: ./resources/helm
         run: |
