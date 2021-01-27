@@ -3,10 +3,6 @@ name: Portal Chart Deployment
 on:
   release:
     types: [created, edited]
-  push:
-    branches:
-      - "dev"
-    paths: ["resources/helm/cava-metadata/**", "**/test-chart.yml", ".ci-helpers/common"]
   workflow_dispatch:
 
 defaults:
@@ -19,7 +15,7 @@ env:
   TEST_CHART_VALUE: .ci-helpers/secrets/dev-test.yaml
 
 jobs:
-  build:
+  publish:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
@@ -64,11 +60,16 @@ jobs:
       - name: Validate chart's templates can render
         run: |
           helm template ${{ env.CHART_PATH }} --values ${{ env.TEST_CHART_VALUE }} 1>/dev/null
-      - name: Setup Git
+      - name: Configure a git user
+        # Having a user.email and user.name configured with git is required to
+        # make commits, which is something chartpress does when publishing.
+        # While Travis CI had a dummy user by default, GitHub Actions doesn't
+        # and require this explicitly setup.
         run: |
-          git config --global user.email "landungs@uw.edu"
-          git config --global user.name "Landung Setiawan"
-      - name: Publish chart
-        working-directory: ./resources/helm
+          git config --global user.email "github-actions@example.local"
+          git config --global user.name "GitHub Actions user
+      - name: Publish images and chart with chartpress
+        env:
+          GITHUB_REPOSITORY: "${{ github.repository }}"
         run: |
-          chartpress --publish-chart
+          ./ci-helpers/publish
