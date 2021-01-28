@@ -39,3 +39,17 @@ traefik:
   expose: false
   entryPoints:
     - web
+
+ingress:
+  # Adds ingress annotations to be able to certify
+  # annotations:
+  #   kubernetes.io/ingress.class: traefik
+  #   cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  annotations: {}
+
+  # Adds tls for domain certification
+  # tls:
+  #   - hosts:
+  #       - example.com
+  #     secretName: mysecret-tls
+  tls: []

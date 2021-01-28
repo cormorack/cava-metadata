@@ -8,10 +8,18 @@ metadata:
   labels:
     {{- include "cava-metadata.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ $serviceName }}
+  {{- if .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 spec:
   entryPoints:
   {{- if .Values.traefik.entryPoints }}
     {{- toYaml .Values.traefik.entryPoints | nindent 4 }}
+  {{- end }}
+  {{- if .Values.ingress.tls }}
+  tls:
+    {{- toYaml .Values.ingress.tls | nindent 4 }}
   {{- end }}
   routes:
     - match: PathPrefix(`{{ $servicePath }}`)
