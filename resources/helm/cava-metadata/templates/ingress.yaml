@@ -10,7 +10,7 @@ metadata:
     app.kubernetes.io/component: {{ $serviceName }}
   {{- if .Values.ingress.annotations }}
   annotations:
-    {{- toYaml . | nindent 4 }}
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
   {{- end }}
 spec:
   entryPoints:
