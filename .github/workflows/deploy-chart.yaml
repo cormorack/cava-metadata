@@ -55,7 +55,7 @@ jobs:
           helm dependencies update ${{ env.CHART_PATH }}
       - name: Lint chart's templates
         run: |
-          helm lint ${{ env.CHART_PATH }} --strict --values ${{ env.TEST_CHART_VALUE }}
+          helm lint ${{ env.CHART_PATH }} --values ${{ env.TEST_CHART_VALUE }}
 
       - name: Validate chart's templates can render
         run: |
