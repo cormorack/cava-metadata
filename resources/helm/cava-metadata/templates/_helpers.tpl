@@ -49,9 +49,7 @@ Selector labels
 {{- define "cava-metadata.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "cava-metadata.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/heritage: {{ .Release.Service | quote }}
 app.kubernetes.io/release: {{ .Release.Name | quote }}
-app.kubernetes.io/chart: {{ include "cava-metadata.chart" . }}
 {{- end -}}
 
 {{/*
