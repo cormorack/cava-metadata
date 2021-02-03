@@ -1,8 +1,6 @@
 name: Test Chart
 
 on:
-  push:
-    paths: ["resources/helm/cava-metadata/**", "**/test-chart.yml", ".ci-helpers/common"]
   pull_request:
     paths: ["resources/helm/cava-metadata/**", "**/test-chart.yml", ".ci-helpers/common"]
   workflow_dispatch:
