@@ -1,8 +1,10 @@
-{{- if .Values.traefik.expose -}}
+{{- if .Values.ingress.expose -}}
 {{- $serviceName := default (include "cava-metadata.name" .) -}}
+{{- $servicePort := .Values.service.port -}}
 {{- $servicePath := .Values.path -}}
-apiVersion: traefik.containo.us/v1alpha1
-kind: IngressRoute
+# https://doc.traefik.io/traefik/providers/kubernetes-crd/#letsencrypt-support-with-the-custom-resource-definition-provider
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
 metadata:
   name: {{ $serviceName }}
   labels:
@@ -13,18 +15,19 @@ metadata:
     {{- toYaml .Values.ingress.annotations | nindent 4 }}
   {{- end }}
 spec:
-  entryPoints:
-  {{- if .Values.traefik.entryPoints }}
-    {{- toYaml .Values.traefik.entryPoints | nindent 4 }}
-  {{- end }}
   {{- if .Values.ingress.tls }}
   tls:
     {{- toYaml .Values.ingress.tls | nindent 4 }}
   {{- end }}
-  routes:
-    - match: PathPrefix(`{{ $servicePath }}`)
-      kind: Rule
-      services:
-        - name: {{ $serviceName }}
-          port: {{ .Values.service.port }}
+  rules:
+    - http:
+        paths:
+          - path: {{ $servicePath }}
+            pathType: Prefix
+            backend:
+              serviceName: {{ $serviceName }}
+              servicePort: {{ $servicePort }}
+      {{- if .Values.ingress.host }}
+      host: {{ .Values.ingress.host }}
+      {{- end }}
 {{- end -}}
