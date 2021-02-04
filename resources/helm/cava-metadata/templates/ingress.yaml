@@ -23,7 +23,6 @@ spec:
     - http:
         paths:
           - path: {{ $servicePath }}
-            pathType: Prefix
             backend:
               serviceName: {{ $serviceName }}
               servicePort: {{ $servicePort }}
