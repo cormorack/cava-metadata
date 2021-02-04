@@ -5,11 +5,11 @@ nameOverride: cava-metadata
 # fullnameOverride: cava-media
 path: /metadata
 service:
-  targetPort: 5000
+  targetPort: 80
   portName: http
   type: ClusterIP
   port: 80
-  containerPort: 5000
+  containerPort: 80
   servicePortName: http
 image:
   repository: cormorack/cava-metadata
@@ -36,17 +36,12 @@ env:
 restartPolicy: Always
 nodeSelector: {}
 ingress:
-  # Adds ingress annotations to be able to certify
-  # annotations:
-  #   kubernetes.io/ingress.class: traefik
-  #   cert-manager.io/cluster-issuer: "letsencrypt-prod"
-  annotations: {}
   expose: false
-  host: ""
+
+  # If secure, must provide tls
+  secure: false
 
   # Adds tls for domain certification
   # tls:
-  #   - hosts:
-  #       - example.com
-  #     secretName: mysecret-tls
-  tls: []
+  #   certResolver: DEVELOPMENT
+  tls: {}
