@@ -12,12 +12,12 @@ spec:
     type: RollingUpdate
   selector:
     matchLabels:
-      {{- include "cava-metadata.selectorLabels" . | nindent 6 }}
       app.kubernetes.io/component: {{ $serviceName }}
+      app.kubernetes.io/release: {{ $.Release.Name | quote }}
   template:
     metadata:
       labels:
-        {{- include "cava-metadata.selectorLabels" . | nindent 8 }}
+        {{- include "cava-metadata.labels" . | nindent 8 }}
         app.kubernetes.io/component: {{ $serviceName }}
     spec:
       {{- with .Values.nodeSelector }}
