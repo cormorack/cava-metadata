@@ -14,7 +14,7 @@ spec:
       port: {{ .Values.service.port }}
       targetPort: {{ .Values.service.targetPort }}
   selector:
-    {{- include "cava-metadata.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: {{ $serviceName }}
+    app.kubernetes.io/release: {{ $.Release.Name | quote }}
 status:
   loadBalancer: {}
