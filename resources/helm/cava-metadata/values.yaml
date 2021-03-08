@@ -33,6 +33,18 @@ env:
     value: ""
   - name: GOOGLE_SERVICE_JSON
     value: ""
+  # === Gunicorn Settings ======
+  # Since fsspec doesn't support uvloop, defaults to asyncio for now ...
+  - name: WORKER_CLASS
+    value: "uvicorn.workers.UvicornH11Worker"
+  # Defaults to 1 worker per core so it can be scaled via multiple pods ...
+  # Set scaling with replicas of this pod
+  - name: WORKERS_PER_CORE
+    value: "1"
+  - name: WEB_CONCURRENCY
+    value: "1"
+  - name: MAX_WORKERS
+    value: "1"
 restartPolicy: Always
 nodeSelector: {}
 ingress:

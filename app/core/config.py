@@ -26,6 +26,10 @@ BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # API VERSION
 CURRENT_API_VERSION = 2.0
 
+# Cloud Credentials
+AWS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", None)
+AWS_SECRET = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
+
 # Redis configurations
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT = os.environ.get("REDIS_PORT", 6379)
@@ -33,8 +37,8 @@ REDIS_PORT = os.environ.get("REDIS_PORT", 6379)
 # OOI Configurations
 BASE_URL = "https://ooinet.oceanobservatories.org"
 M2M_URL = "api/m2m"
-USERNAME = os.environ.get("OOI_USERNAME", "")
-TOKEN = os.environ.get("OOI_TOKEN", "")
+USERNAME = os.environ.get("OOI_USERNAME", None)
+TOKEN = os.environ.get("OOI_TOKEN", None)
 
 # File Systems Configurations
 FILE_SYSTEMS = {
@@ -50,3 +54,6 @@ FILE_SYSTEMS = {
 }
 GOOGLE_SERVICE_JSON = os.environ.get("GOOGLE_SERVICE_JSON", "",)
 DATA_BUCKET = 'ooi-data'
+
+# Data sources
+METADATA_SOURCE = "s3://ooi-metadata"
