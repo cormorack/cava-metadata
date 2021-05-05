@@ -1,7 +1,9 @@
 import json
 import os
 import logging
-from typing import TypeVar
+import statistics
+import math
+from typing import TypeVar, Union
 import fsspec
 
 import geopandas as gpd
@@ -21,6 +23,7 @@ from core.config import (
     REDIS_HOST,
     REDIS_PORT,
     METADATA_SOURCE,
+    settings,
 )
 from store import META
 from utils.conn import send_request, retrieve_deployments
@@ -71,8 +74,12 @@ def _df_to_gdf_points(df: pd.DataFrame) -> gpd.GeoDataFrame:
 def _fetch_table(
     table_name: str,
     record: bool = False,
-    filters: TypeVar("Choosable", list, type(None)) = None,
+    filters: Union[list, None] = None,
 ) -> Choosable:
+    fs = settings.FILE_SYSTEMS["aws_s3"]
+    # Clears cache everytime
+    fs.invalidate_cache(settings.METADATA_BUCKET)
+
     tabledf = dataframe.read_parquet(
         os.path.join(METADATA_SOURCE, table_name),
         engine="pyarrow-dataset",
@@ -110,33 +117,57 @@ def _get_poly(row):
     return Polygon(json.loads(row))
 
 
-def _get_data_availability(refdes):
-    icdf = pd.DataFrame(META["catalog_list"])
-    inst_list = icdf[icdf.instrument_rd.str.match(refdes)]
-    res = {}
-    inst = None
-    if len(inst_list) == 1:
-        inst = inst_list.iloc[0]
-    else:
-        for _, row in inst_list.iterrows():
-            if (
-                row["stream_rd"] == row["instrument"]["preferred_stream"]
-            ) and (
-                row["stream_method"]
-                == row["instrument"]["preferred_stream_method"]
-            ):
-                inst = row
+def _df2dict(df: Union[pd.DataFrame, dataframe.DataFrame]) -> dict:
+    """Converts data availability dataframe to dictionary"""
+    result_dict = {}
+    for _, row in df.iterrows():
+        if row['inst_rd'] not in result_dict:
+            result_dict[row['inst_rd']] = {}
+        stream_name = "-".join(row['data_stream'].split('-')[-2:])
+        result_dict[row['inst_rd']][stream_name] = row['result']
+    return result_dict
 
-    if not isinstance(inst, type(None)):
-        dest_fold = f"ooi-data/data_availability/{inst.data_table}"
-        dadf = dataframe.read_parquet(
-            f"s3://{dest_fold}", index=False
-        ).compute()
-        for idx, val in dadf.iterrows():
-            res[str(val["dtindex"].astype("int64"))] = int(
-                val["count"].astype("int64")
-            )
-    return res
+
+def _get_average_da(streams_da: dict) -> dict:
+    """Calculate average data availability among all data streams"""
+    total_results = {}
+    for k, v in streams_da.items():
+        for i, j in v.items():
+            if i not in total_results:
+                total_results[i] = []
+            total_results[i].append(j)
+
+    return {k: math.ceil(statistics.mean(v)) for k, v in total_results.items()}
+
+
+def _get_data_availability(ref: str, average: bool):
+    filters = []
+    for r in ref.strip().split(','):
+        filters.append([("inst_rd", "==", r)])
+    fs = settings.FILE_SYSTEMS["aws_s3"]
+    # Clears cache everytime
+    fs.invalidate_cache(settings.METADATA_BUCKET)
+
+    ddf = dataframe.read_parquet(
+        os.path.join(METADATA_SOURCE, "data-availability"),
+        engine="pyarrow-dataset",
+        filters=filters,
+        index=False,
+    )
+    # Sanitize dataframe
+    ddf['result'] = ddf['result'].apply(json.loads, meta=('result', 'object'))
+    ddf['result'] = ddf['result'].apply(
+        lambda row: {int(k): v for k, v in row.items()},
+        meta=('result', 'object'),
+    )
+
+    data_availability = _df2dict(ddf)
+    if average:
+        data_availability = {
+            refdes: _get_average_da(streams_da)
+            for refdes, streams_da in data_availability.items()
+        }
+    return data_availability
 
 
 def _get_inst_params(refdes):
@@ -476,11 +507,12 @@ def get_deployments(version: bool = Depends(_check_version), refdes: str = ""):
 
 
 @router.get("/data_availability")
-def get_data_availability(ref: str, version: bool = Depends(_check_version)):
+def get_data_availability(
+    ref: str, average: bool = True, version: bool = Depends(_check_version)
+):
     data_availability = {}
     if version and ref:
-        data_availability_res = _get_data_availability(ref)
-        data_availability = {ref: data_availability_res}
+        data_availability = _get_data_availability(ref, average)
 
     return data_availability
 
