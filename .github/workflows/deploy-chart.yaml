@@ -33,7 +33,7 @@ jobs:
         run: sudo apt-get install git-crypt
       - name: Install Chartpress
         run: |
-          pip install chartpress
+          pip install six chartpress
           chartpress --help
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
