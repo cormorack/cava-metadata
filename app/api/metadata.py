@@ -186,12 +186,7 @@ def _get_inst_params(refdes):
             filter(
                 lambda p: (p["pid"] == 7)
                 or (p["data_product_type"] is not None)
-                and (p["data_product_type"] == 'Science Data')
-                and (p["data_product_identifier"] is not None)
-                and (
-                    "L1" in p["data_product_identifier"]
-                    or "L2" in p["data_product_identifier"]
-                ),
+                and (p["data_product_type"] == 'Science Data'),
                 inst['parameters'],
             )
         )
