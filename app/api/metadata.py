@@ -3,7 +3,7 @@ import os
 import logging
 import statistics
 import math
-from typing import TypeVar, Union
+from typing import TypeVar, Union, Tuple
 import fsspec
 
 import geopandas as gpd
@@ -238,6 +238,23 @@ def _create_simple_view(instrument_list):
         new_list.append(inst_view)
 
 
+def _create_column_filter(
+    column_name: str, value: str
+) -> Tuple[str, str, Union[str, Tuple]]:
+    """
+    Create disjunctive normal form (DNF) filters, based on value
+    https://jorisvandenbossche.github.io/arrow-docs-preview/html-option-1/python/generated/pyarrow.parquet.read_table.html#pyarrow-parquet-read-table
+
+    """
+    value_list = value.split(',')
+    if len(value_list) > 1:
+        values = tuple(val.strip() for val in value_list)
+        filters = (column_name, "in", values)
+    else:
+        filters = (column_name, "==", value_list[0])
+    return filters
+
+
 @router.get("/arrays")
 def get_arrays(version: bool = Depends(_check_version)):
     if version:
@@ -290,16 +307,18 @@ def get_instruments(
         if any([site, group, infrastructure, area]):
             filters = []
             if site:
-                filters.append(("site_rd", "==", site))
+                filters.append(_create_column_filter("site_rd", site))
 
             if group:
-                filters.append(("group_code", "==", group))
+                filters.append(_create_column_filter("group_code", group))
 
             if infrastructure:
-                filters.append(("infra_rd", "==", infrastructure))
+                filters.append(
+                    _create_column_filter("infra_rd", infrastructure)
+                )
 
             if area:
-                filters.append(("area_rd", "==", area))
+                filters.append(_create_column_filter("area_rd", area))
         try:
             results = _fetch_table(
                 "cava_instruments", record=True, filters=filters
