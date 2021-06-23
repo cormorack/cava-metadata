@@ -83,6 +83,8 @@ CORS_ORIGINS = [
     "https://app.interactiveoceans.washington.edu",
     "https://api-dev.ooica.net",
     "https://api.interactiveoceans.washington.edu",
+    "https://api-development.ooica.net",
+    "https://cava-portal.netlify.app",
 ]
 
 BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
