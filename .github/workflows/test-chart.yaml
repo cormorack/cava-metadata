@@ -1,6 +1,8 @@
 name: Test Chart
 
 on:
+  push:
+    paths: ["resources/helm/cava-metadata/**", "**/test-chart.yml", ".ci-helpers/common"]
   pull_request:
     paths: ["resources/helm/cava-metadata/**", "**/test-chart.yml", ".ci-helpers/common"]
   workflow_dispatch:
@@ -15,9 +17,8 @@ env:
   TEST_CHART_VALUE: .ci-helpers/secrets/dev-test.yaml
 
 jobs:
-  chart-test:
+  build:
     runs-on: ubuntu-20.04
-    name: ${{ matrix.k3s-channel }}-chart-test 
     strategy:
       # Keep running even if one variation of the job fail
       fail-fast: false
@@ -28,7 +29,8 @@ jobs:
         #
         # k3s-version: https://github.com/rancher/k3s/tags
         # k3s-channel: https://update.k3s.io/v1-release/channels
-        k3s-channel: [v1.18, v1.19]
+        include:
+          - k3s-channel: v1.18
 
     steps:
       - uses: actions/checkout@v2
@@ -52,9 +54,8 @@ jobs:
         run: |
           helm dependencies update ${{ env.CHART_PATH }}
       - name: Lint chart's templates
-        # Strict: helm lint ${{ env.CHART_PATH }} --strict --values ${{ env.TEST_CHART_VALUE }}
         run: |
-          helm lint ${{ env.CHART_PATH }} --values ${{ env.TEST_CHART_VALUE }}
+          helm lint ${{ env.CHART_PATH }} --strict --values ${{ env.TEST_CHART_VALUE }}
 
       - name: Validate chart's templates can render
         run: |

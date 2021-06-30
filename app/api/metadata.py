@@ -1,10 +1,6 @@
 import json
-import os
 import logging
-import statistics
-import math
-from typing import TypeVar, Union, Tuple
-import fsspec
+from typing import TypeVar
 
 import geopandas as gpd
 import pandas as pd
@@ -14,7 +10,6 @@ from dask import dataframe
 from dateutil import parser
 from shapely.geometry import Polygon
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
 
 from core.config import (
     BASE_URL,
@@ -22,11 +17,9 @@ from core.config import (
     M2M_URL,
     REDIS_HOST,
     REDIS_PORT,
-    METADATA_SOURCE,
-    settings,
 )
 from store import META
-from utils.conn import send_request, retrieve_deployments
+from utils.conn import send_request
 from utils.parsers import parse_annotations_json, unix_time_millis
 from api.cables import RSN_CABLE
 
@@ -71,21 +64,8 @@ def _df_to_gdf_points(df: pd.DataFrame) -> gpd.GeoDataFrame:
     )
 
 
-def _fetch_table(
-    table_name: str,
-    record: bool = False,
-    filters: Union[list, None] = None,
-) -> Choosable:
-    fs = settings.FILE_SYSTEMS["aws_s3"]
-    # Clears cache everytime
-    fs.invalidate_cache(settings.METADATA_BUCKET)
-
-    tabledf = dataframe.read_parquet(
-        os.path.join(METADATA_SOURCE, table_name),
-        engine="pyarrow-dataset",
-        filters=filters,
-        index=False,
-    ).compute()
+async def _fetch_table(table_name: str, record: bool = False) -> Choosable:
+    tabledf = META["dfdict"][table_name]
     if record:
         tabledf = _df_to_record(tabledf)
     return tabledf
@@ -117,153 +97,49 @@ def _get_poly(row):
     return Polygon(json.loads(row))
 
 
-def _df2dict(df: Union[pd.DataFrame, dataframe.DataFrame]) -> dict:
-    """Converts data availability dataframe to dictionary"""
-    result_dict = {}
-    for _, row in df.iterrows():
-        if row['inst_rd'] not in result_dict:
-            result_dict[row['inst_rd']] = {}
-        stream_name = "-".join(row['data_stream'].split('-')[-2:])
-        result_dict[row['inst_rd']][stream_name] = row['result']
-    return result_dict
-
-
-def _get_average_da(streams_da: dict) -> dict:
-    """Calculate average data availability among all data streams"""
-    total_results = {}
-    for k, v in streams_da.items():
-        for i, j in v.items():
-            if i not in total_results:
-                total_results[i] = []
-            total_results[i].append(j)
-
-    return {k: math.ceil(statistics.mean(v)) for k, v in total_results.items()}
-
-
-def _get_data_availability(ref: str, average: bool):
-    filters = []
-    for r in ref.strip().split(','):
-        filters.append([("inst_rd", "==", r)])
-    fs = settings.FILE_SYSTEMS["aws_s3"]
-    # Clears cache everytime
-    fs.invalidate_cache(settings.METADATA_BUCKET)
-
-    ddf = dataframe.read_parquet(
-        os.path.join(METADATA_SOURCE, "data-availability"),
-        engine="pyarrow-dataset",
-        filters=filters,
-        index=False,
-    )
-    # Sanitize dataframe
-    ddf['result'] = ddf['result'].apply(json.loads, meta=('result', 'object'))
-    ddf['result'] = ddf['result'].apply(
-        lambda row: {int(k): v for k, v in row.items()},
-        meta=('result', 'object'),
-    )
-
-    data_availability = _df2dict(ddf)
-    if average:
-        data_availability = {
-            refdes: _get_average_da(streams_da)
-            for refdes, streams_da in data_availability.items()
-        }
-    return data_availability
-
-
-def _get_inst_params(refdes):
-    inst_catalog = META["instruments_catalog"]
-    inst_list = list(
-        filter(lambda i: i["reference_designator"] == refdes, inst_catalog)
-    )
-    new_inst = {
-        "nameset": None,
-        "idset": None,
-        "products": None,
-    }
-    if len(inst_list) > 0:
-        inst = inst_list[0]
-        params = list(
-            filter(
-                lambda p: (p["pid"] == 7)
-                or (p["data_product_type"] is not None)
-                and (p["data_product_type"] == 'Science Data'),
-                inst['parameters'],
-            )
-        )
-        if len(params) > 0:
-            set_params = list(set([p["parameter_name"] for p in params]))
-            param_ids = list(set([p['pid'] for p in params]))
-            new_inst["nameset"] = set_params
-            new_inst["idset"] = param_ids
-            new_inst["products"] = params
-
-    return new_inst
-
-
-def _create_simple_view(instrument_list):
-    new_list = []
-    for inst in instrument_list:
-        inst_view = {}
-        inst_view["reference_designator"] = inst["reference_designator"]
-        inst_view["instrument_name"] = inst["instrument_name"]
-        inst_view["asset_type"] = inst["asset_type"]
-        if "nameset" in inst:
-            nameset = inst["nameset"]
-        else:
-            param = _get_inst_params(inst["reference_designator"])
-            nameset = param["nameset"]
-        param_text = ""
-        if nameset:
-            param_text = "; ".join(
-                list(filter(lambda i: "time" not in i.lower(), nameset))
-            )
-        site = _fetch_table(
-            "cava_sites",
-            record=True,
-            filters=[("reference_designator", "==", inst["site_rd"])],
-        )[0]
-        infra = _fetch_table(
-            "cava_infrastructures",
-            record=True,
-            filters=[("reference_designator", "==", inst["infra_rd"])],
-        )[0]
-        inst_view["site_name"] = site["site_name"]
-        inst_view["infrastructure_name"] = infra["name"]
-        inst_view["param_text"] = param_text
-        new_list.append(inst_view)
-
-
-def _create_column_filter(
-    column_name: str, value: str
-) -> Tuple[str, str, Union[str, Tuple]]:
-    """
-    Create disjunctive normal form (DNF) filters, based on value
-    https://jorisvandenbossche.github.io/arrow-docs-preview/html-option-1/python/generated/pyarrow.parquet.read_table.html#pyarrow-parquet-read-table
-
-    """
-    value_list = value.split(',')
-    if len(value_list) > 1:
-        values = tuple(val.strip() for val in value_list)
-        filters = (column_name, "in", values)
+def _get_data_availability(refdes):
+    icdf = pd.DataFrame(META["catalog_list"])
+    inst_list = icdf[icdf.instrument_rd.str.match(refdes)]
+    res = {}
+    inst = None
+    if len(inst_list) == 1:
+        inst = inst_list.iloc[0]
     else:
-        filters = (column_name, "==", value_list[0])
-    return filters
+        for idx, row in inst_list.iterrows():
+            if (
+                row["stream_rd"] == row["instrument"]["preferred_stream"]
+            ) and (
+                row["stream_method"]
+                == row["instrument"]["preferred_stream_method"]
+            ):
+                inst = row
+
+    if not isinstance(inst, type(None)):
+        dest_fold = f"ooi-data/data_availability/{inst.data_table}"
+        dadf = dataframe.read_parquet(
+            f"s3://{dest_fold}", index=False
+        ).compute()
+        for idx, val in dadf.iterrows():
+            res[str(val["dtindex"].astype("int64"))] = int(
+                val["count"].astype("int64")
+            )
+    return res
 
 
 @router.get("/arrays")
-def get_arrays(version: bool = Depends(_check_version)):
+async def get_arrays(version: bool = Depends(_check_version)):
     if version:
-        results = _fetch_table("cava_arrays", record=True)
+        results = await _fetch_table("arrays", record=True)
     return results
 
 
 @router.get("/areas")
-def get_site_areas(
+async def get_site_areas(
     version: bool = Depends(_check_version), geojson: bool = True
 ):
     if version:
         # for now drop empty coordinates
-        tabledf = _fetch_table("cava_areas")
+        tabledf = await _fetch_table("areas")
         tabledf = tabledf.dropna(subset=['coordinates'])
         if geojson:
             tabledf.loc[:, "geometry"] = tabledf.coordinates.apply(_get_poly)
@@ -280,196 +156,39 @@ def get_site_areas(
 
 
 @router.get("/infrastructures")
-def get_infrastructures(version: bool = Depends(_check_version)):
+async def get_infrastructures(version: bool = Depends(_check_version)):
     if version:
-        results = _fetch_table("cava_infrastructures", record=True)
+        results = await _fetch_table("infrastructures", record=True)
     return results
 
 
 @router.get("/instruments")
-def get_instruments(
-    version: bool = Depends(_check_version),
-    site: str = None,
-    group: str = None,
-    infrastructure: str = None,
-    area: str = None,
-    include_params: bool = False,
-    refdes: str = None,
-):
-    filters = None
-    final_results = []
+async def get_instruments(version: bool = Depends(_check_version)):
     if version:
-        if any([site, group, infrastructure, area]):
-            filters = []
-            if site:
-                filters.append(_create_column_filter("site_rd", site))
-
-            if group:
-                filters.append(_create_column_filter("group_code", group))
-
-            if infrastructure:
-                filters.append(
-                    _create_column_filter("infra_rd", infrastructure)
-                )
-
-            if area:
-                filters.append(_create_column_filter("area_rd", area))
-        try:
-            results = _fetch_table(
-                "cava_instruments", record=True, filters=filters
-            )
-            if refdes:
-                rd_list = refdes.strip(" ").split(",")
-                results = list(
-                    filter(
-                        lambda r: r["reference_designator"] in rd_list, results
-                    )
-                )
-
-            if include_params:
-                final_results = [
-                    dict(
-                        **_get_inst_params(res["reference_designator"]), **res
-                    )
-                    for res in results
-                ]
-            else:
-                final_results = results
-
-            if len(final_results) == 0:
-                return JSONResponse(
-                    status_code=204,
-                    content={"message": "Instruments not found"},
-                )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail={"message": f"{e}"},
-            )
-    return final_results
-
-
-@router.get("/instrument/{refdes}")
-def get_single_instrument(
-    version: bool = Depends(_check_version), refdes: str = ""
-):
-    filters = None
-    if version:
-        if refdes:
-            filters = [("reference_designator", "==", refdes)]
-        try:
-            results = _fetch_table(
-                "cava_instruments", record=True, filters=filters
-            )
-            final_results = [
-                dict(**res, **_get_inst_params(res["reference_designator"]))
-                for res in results
-            ]
-            if len(final_results) == 1:
-                return final_results[0]
-            else:
-                return JSONResponse(
-                    status_code=204,
-                    content={"message": f"{refdes} not found"},
-                )
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail={"message": f"{e}"},
-            )
-
-
-@router.get("/instrument/{refdes}/streams")
-def get_instrument_streams(
-    version: bool = Depends(_check_version), refdes: str = ""
-):
-    filters = None
-    if version:
-        if refdes:
-            filters = [
-                ("reference_designator", "==", refdes),
-                ("stream_type", "==", "Science"),
-            ]
-
-        results = _fetch_table("ooi_streams", record=True, filters=filters)
-    return results
-
-
-@router.get("/instrument/{refdes}/deployments")
-async def get_instrument_deployments(
-    version: bool = Depends(_check_version), refdes: str = ""
-):
-    deployments = []
-    if version:
-        deployments = await retrieve_deployments(refdes)
-
-    return deployments
-
-
-@router.get("/instruments/groups")
-def get_instrument_groups(version: bool = Depends(_check_version)):
-    if version:
-        results = _fetch_table("cava_instrument-groups", record=True)
-    return results
-
-
-@router.get("/instruments/catalog")
-async def get_insts_catalog():
-    return META["instruments_catalog"]
-
-
-@router.get("/data-products")
-def get_data_products(version: bool = Depends(_check_version)):
-    if version:
-        results = _fetch_table("cava_dataproducts", record=True)
-    return results
-
-
-@router.get("/data-products/groups")
-def get_data_product_groups(version: bool = Depends(_check_version)):
-    if version:
-        results = _fetch_table("cava_dataproduct-groups", record=True)
+        results = await _fetch_table("instruments", record=True)
     return results
 
 
 @router.get("/parameters")
-def get_parameters(version: bool = Depends(_check_version)):
+async def get_parameters(version: bool = Depends(_check_version)):
     if version:
-        results = _fetch_table("ooi_parameters", record=True)
+        results = await _fetch_table("parameters", record=True)
     return results
 
 
 @router.get("/streams")
-def get_streams(version: bool = Depends(_check_version), inst_rd: str = ""):
-    filters = None
+async def get_streams(version: bool = Depends(_check_version)):
     if version:
-        if any([inst_rd]):
-            filters = [("stream_type", "==", "Science")]
-            if inst_rd:
-                filters.append(("reference_designator", "==", inst_rd))
-        results = _fetch_table("ooi_streams", record=True, filters=filters)
-    return results
-
-
-@router.get("/streams/{refdes}")
-def get_single_stream(
-    version: bool = Depends(_check_version), refdes: str = ""
-):
-    filters = None
-    if version:
-        if refdes:
-            filters = [
-                ("stream", "==", refdes),
-                ("stream_type", "==", "Science"),
-            ]
-        results = _fetch_table("ooi_streams", record=True, filters=filters)
+        results = await _fetch_table("streams", record=True)
     return results
 
 
 @router.get("/sites")
-def get_sites(version: bool = Depends(_check_version), geojson: bool = True):
+async def get_sites(
+    version: bool = Depends(_check_version), geojson: bool = True
+):
     if version:
-        tabledf = _fetch_table("cava_sites")
+        tabledf = await _fetch_table("sites")
         tabledf = tabledf[tabledf.active_display == True]  # noqa
         if geojson:
             results = json.loads(_df_to_gdf_points(tabledf).to_json())
@@ -481,24 +200,18 @@ def get_sites(version: bool = Depends(_check_version), geojson: bool = True):
 @router.get("/get_instruments_catalog")
 async def get_instruments_catalog(version: bool = Depends(_check_version)):
     if version:
-        if "legacy_catalog" not in META:
-            fs = fsspec.filesystem('s3')
-            with fs.open(
-                os.path.join('ooi-metadata', 'legacy_catalog.json')
-            ) as f:
-                results = json.load(f)
-                META.update({"legacy_catalog": results})
-        else:
-            results = META["legacy_catalog"]
+        results = META["catalog_list"]
     return results
 
 
 @router.get("/global_ranges")
-def get_global_ranges(version: bool = Depends(_check_version)):
+async def get_global_ranges(version: bool = Depends(_check_version)):
     if version:
-        results = _fetch_table("global_ranges", record=True)
+        global_ranges = json.loads(
+            META["global_ranges"].to_json(orient="records")
+        )
 
-    return results
+    return global_ranges
 
 
 @router.get("/cables")
@@ -509,24 +222,22 @@ async def get_cables(version: bool = Depends(_check_version)):
 
 @router.get("/get_deployments")
 def get_deployments(version: bool = Depends(_check_version), refdes: str = ""):
-    # deployments = list(
-    #     filter(
-    #         lambda dep: dep["reference_designator"] == refdes,
-    #         META["deployments_list"],
-    #     )
-    # )
-    deployments = retrieve_deployments(refdes)
+    deployments = list(
+        filter(
+            lambda dep: dep["reference_designator"] == refdes,
+            META["deployments_list"],
+        )
+    )
 
     return deployments
 
 
 @router.get("/data_availability")
-def get_data_availability(
-    ref: str, average: bool = True, version: bool = Depends(_check_version)
-):
+def get_data_availability(ref: str, version: bool = Depends(_check_version)):
     data_availability = {}
     if version and ref:
-        data_availability = _get_data_availability(ref, average)
+        data_availability_res = _get_data_availability(ref)
+        data_availability = {ref: data_availability_res}
 
     return data_availability
 

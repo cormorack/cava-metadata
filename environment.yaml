@@ -2,7 +2,6 @@ name: app-env
 channels:
   - conda-forge
 dependencies:
-  - python=3.8
   - fastapi
   - uvicorn
   - pymongo
@@ -10,16 +9,16 @@ dependencies:
   - nomkl
   - sqlalchemy
   - fsspec
-  - s3fs>=0.5.2
+  - s3fs
   - gspread
   - gunicorn
-  - uvicorn
   - geopandas
   - requests
   - dask
-  - pyarrow
+  - fastparquet
   - toolz
   - xlrd
   - loguru
-  - prometheus-fastapi-instrumentator
   - pip=20
+  - pip:
+    - gspread==3.6

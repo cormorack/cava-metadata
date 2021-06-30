@@ -4,8 +4,6 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 
-from prometheus_fastapi_instrumentator import Instrumentator
-
 from api import metadata
 from core.config import (
     CORS_ORIGINS,
@@ -16,7 +14,7 @@ from core.config import (
     SERVICE_ID,
     SERVICE_NAME,
 )
-from scripts import LoadMeta, load_instrument_catalog
+from scripts import LoadMeta
 
 logger = logging.getLogger(f"{SERVICE_ID}-app")
 
@@ -32,8 +30,6 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
-    # Regex for dev in netlify
-    allow_origin_regex='https://.*cava-portal\.netlify\.app',
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,14 +44,8 @@ def home():
 @app.on_event("startup")
 def startup_event():
     LoadMeta()
-    load_instrument_catalog()
 
 
 app.include_router(
     metadata.router, prefix=f"/{SERVICE_ID}", tags=[f"{SERVICE_ID}"]
-)
-
-# Prometheus instrumentation
-Instrumentator().instrument(app).expose(
-    app, endpoint="/metadata/metrics", include_in_schema=False
 )
