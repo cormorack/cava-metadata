@@ -3,7 +3,7 @@ import logging
 
 import requests
 
-from core.config import TOKEN, USERNAME
+from core.config import TOKEN, USERNAME, BASE_URL, M2M_URL
 
 logger = logging.getLogger(__name__)
 
@@ -62,3 +62,42 @@ def send_request(url, params=None):
     except Exception as e:
         logger.warning(str(e))
         return None
+
+
+# OOI Functions
+def split_refdes(refdes):
+    rd_list = refdes.split("-")
+    return (rd_list[0], rd_list[1], "-".join(rd_list[2:]))
+
+
+def retrieve_deployments(refdes):
+    dep_port = 12587
+    reflist = list(split_refdes(refdes))
+    base_url_list = [BASE_URL, M2M_URL, str(dep_port), "events/deployment/inv"]
+    dep_list = send_request("/".join(base_url_list + reflist))
+    deployments = []
+    if isinstance(dep_list, list):
+        if len(dep_list) > 0:
+            for d in dep_list:
+                print("/".join(base_url_list + reflist + [str(d)]))
+                dep = send_request(
+                    "/".join(base_url_list + reflist + [str(d)])
+                )
+                if len(dep) > 0:
+                    deployment = dep[0]
+                    dep_dct = {
+                        "reference_designator": deployment[
+                            "referenceDesignator"
+                        ],
+                        "uid": deployment["sensor"]["uid"],
+                        "description": deployment["sensor"]["description"],
+                        "owner": deployment["sensor"]["owner"],
+                        "manufacturer": deployment["sensor"]["manufacturer"],
+                        "deployment_number": deployment["deploymentNumber"],
+                        "deployment_start": deployment["eventStartTime"],
+                        "deployment_end": deployment["eventStopTime"],
+                        "lat": deployment["location"]["latitude"],
+                        "lon": deployment["location"]["longitude"],
+                    }
+                    deployments.append(dep_dct)
+    return deployments
