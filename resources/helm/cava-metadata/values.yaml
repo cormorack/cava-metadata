@@ -5,11 +5,11 @@ nameOverride: cava-metadata
 # fullnameOverride: cava-media
 path: /metadata
 service:
-  targetPort: 5000
+  targetPort: 80
   portName: http
   type: ClusterIP
   port: 80
-  containerPort: 5000
+  containerPort: 80
   servicePortName: http
 image:
   repository: cormorack/cava-metadata
@@ -33,9 +33,27 @@ env:
     value: ""
   - name: GOOGLE_SERVICE_JSON
     value: ""
+  # === Gunicorn Settings ======
+  # Since fsspec doesn't support uvloop, defaults to asyncio for now ...
+  - name: WORKER_CLASS
+    value: "uvicorn.workers.UvicornH11Worker"
+  # Defaults to 1 worker per core so it can be scaled via multiple pods ...
+  # Set scaling with replicas of this pod
+  - name: WORKERS_PER_CORE
+    value: "1"
+  - name: WEB_CONCURRENCY
+    value: "1"
+  - name: MAX_WORKERS
+    value: "1"
 restartPolicy: Always
 nodeSelector: {}
-traefik:
+ingress:
   expose: false
-  entryPoints:
-    - web
+
+  # If secure, must provide tls
+  secure: false
+
+  # Adds tls for domain certification
+  # tls:
+  #   certResolver: DEVELOPMENT
+  tls: {}

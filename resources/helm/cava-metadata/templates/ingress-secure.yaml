@@ -1,4 +1,4 @@
-{{- if and (eq .Values.ingress.expose true) (eq .Values.ingress.secure false) -}}
+{{- if and .Values.ingress.expose .Values.ingress.secure -}}
 {{- $serviceName := default (include "cava-metadata.name" .) -}}
 {{- $servicePort := .Values.service.port -}}
 {{- $servicePath := .Values.path -}}
@@ -6,17 +6,21 @@
 apiVersion: traefik.containo.us/v1alpha1
 kind: IngressRoute
 metadata:
-  name: {{ $serviceName }}
+  name: {{ $serviceName }}-secure
   labels:
     {{- include "cava-metadata.labels" . | nindent 4 }}
     app.kubernetes.io/component: {{ $serviceName }}
 spec:
   entryPoints:
-    - web
+    - websecure
   routes:
     - match: PathPrefix(`{{ $servicePath }}`)
       kind: Rule
       services:
         - name: {{ $serviceName }}
           port: {{ $servicePort }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
 {{- end -}}
