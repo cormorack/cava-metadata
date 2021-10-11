@@ -3,13 +3,14 @@ import os
 import logging
 import statistics
 import math
-from typing import TypeVar, Union, Tuple
+from typing import TypeVar, Union, Tuple, Literal
 import fsspec
 
 import geopandas as gpd
 import pandas as pd
 import pytz
 import redis
+import requests
 from dask import dataframe
 from dateutil import parser
 from shapely.geometry import Polygon
@@ -140,33 +141,22 @@ def _get_average_da(streams_da: dict) -> dict:
     return {k: math.ceil(statistics.mean(v)) for k, v in total_results.items()}
 
 
-def _get_data_availability(ref: str, average: bool):
-    filters = []
-    for r in ref.strip().split(','):
-        filters.append([("inst_rd", "==", r)])
-    fs = settings.FILE_SYSTEMS["aws_s3"]
-    # Clears cache everytime
-    fs.invalidate_cache(settings.METADATA_BUCKET)
-
-    ddf = dataframe.read_parquet(
-        os.path.join(METADATA_SOURCE, "data-availability"),
-        engine="pyarrow-dataset",
-        filters=filters,
-        index=False,
-    )
-    # Sanitize dataframe
-    ddf['result'] = ddf['result'].apply(json.loads, meta=('result', 'object'))
-    ddf['result'] = ddf['result'].apply(
-        lambda row: {int(k): v for k, v in row.items()},
-        meta=('result', 'object'),
-    )
-
-    data_availability = _df2dict(ddf)
-    if average:
-        data_availability = {
-            refdes: _get_average_da(streams_da)
-            for refdes, streams_da in data_availability.items()
-        }
+def _get_data_availability(
+    ref: str,
+    average: bool,
+    resolution: Literal['hourly', 'daily', 'monthly'] = 'daily',
+):
+    url_template = 'https://raw.githubusercontent.com/ooi-data/data_availability/main/{resolution}/{ref}'.format
+    request_url = url_template(resolution=resolution, ref=ref)
+    response = requests.get(request_url)
+    if response.status_code == 200:
+        result_dict = response.json()
+        if average:
+            data_availability = {ref: _get_average_da(result_dict)}
+        else:
+            data_availability = {ref: result_dict}
+    else:
+        data_availability = {ref: None}
     return data_availability
 
 
@@ -522,13 +512,28 @@ def get_deployments(version: bool = Depends(_check_version), refdes: str = ""):
 
 @router.get("/data_availability")
 def get_data_availability(
-    ref: str, average: bool = True, version: bool = Depends(_check_version)
+    ref: str,
+    average: bool = True,
+    resolution: Literal['hourly', 'daily', 'monthly'] = 'daily',
+    version: bool = Depends(_check_version),
 ):
-    data_availability = {}
-    if version and ref:
-        data_availability = _get_data_availability(ref, average)
-
-    return data_availability
+    try:
+        if version and ref:
+            data_availability = _get_data_availability(
+                ref, average, resolution=resolution
+            )
+            if isinstance(data_availability[ref], dict):
+                return data_availability
+            else:
+                return JSONResponse(
+                    status_code=204,
+                    content={"message": f"{ref} not found"},
+                )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={"message": f"{e}"},
+        )
 
 
 @router.get("/get_annotations")
