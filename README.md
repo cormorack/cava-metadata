@@ -1,4 +1,6 @@
-# metadata
+# cava-metadata
+
+[![Cabled Array Official](https://tinyurl.com/ca-official)](#)
 
 This is the metadata service for CAVA.
 
