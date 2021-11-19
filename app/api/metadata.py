@@ -175,8 +175,8 @@ def _get_inst_params(refdes):
         params = list(
             filter(
                 lambda p: (p["pid"] == 7)
-                or (p["data_product_type"] is not None)
-                and (p["data_product_type"] == 'Science Data'),
+                or ("qartod" in p["reference_designator"])
+                or (p["data_product_identifier"] is not None),
                 inst['parameters'],
             )
         )
