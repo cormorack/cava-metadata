@@ -175,8 +175,13 @@ def _get_inst_params(refdes):
         params = list(
             filter(
                 lambda p: (p["pid"] == 7)
-                or ("qartod" in p["reference_designator"])
-                or (p["data_product_identifier"] is not None),
+                or (
+                    (p["data_product_identifier"] is not None)
+                    and (
+                        "L1" in p["data_product_identifier"]
+                        or "L2" in p["data_product_identifier"]
+                    )
+                ),
                 inst['parameters'],
             )
         )

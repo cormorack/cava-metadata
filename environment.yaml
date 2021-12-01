@@ -21,4 +21,5 @@ dependencies:
   - toolz
   - xlrd
   - loguru
+  - zarr
   - prometheus-fastapi-instrumentator
