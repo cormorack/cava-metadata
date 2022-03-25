@@ -10,7 +10,7 @@ dependencies:
   - nomkl
   - sqlalchemy
   - fsspec
-  - s3fs=2021.10.1
+  - s3fs=2022.02.0
   - gspread
   - gunicorn
   - uvicorn
@@ -21,4 +21,5 @@ dependencies:
   - toolz
   - xlrd
   - loguru
+  - zarr
   - prometheus-fastapi-instrumentator
