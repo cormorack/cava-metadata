@@ -16,6 +16,7 @@ dependencies:
   - uvicorn
   - geopandas
   - requests
+  - cryptography<38
   - dask
   - pyarrow
   - toolz
