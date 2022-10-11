@@ -16,9 +16,9 @@ dependencies:
   - uvicorn
   - geopandas
   - requests
+  - cryptography<38
   - dask
   - pyarrow
-  - pyopenssl==20.0.0
   - toolz
   - xlrd
   - loguru
