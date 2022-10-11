@@ -180,6 +180,7 @@ def _get_inst_params(refdes):
                     and (
                         "L1" in p["data_product_identifier"]
                         or "L2" in p["data_product_identifier"]
+                        or "BOTSFLU" in p["data_product_identifier"]
                     )
                 ),
                 inst['parameters'],
