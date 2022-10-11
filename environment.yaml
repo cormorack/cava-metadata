@@ -18,6 +18,7 @@ dependencies:
   - requests
   - dask
   - pyarrow
+  - pyopenssl==20.0.0
   - toolz
   - xlrd
   - loguru
