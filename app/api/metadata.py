@@ -282,6 +282,13 @@ def get_infrastructures(version: bool = Depends(_check_version)):
     return results
 
 
+@router.get("/points-of-exploration")
+def get_points_of_exploration(version: bool = Depends(_check_version)):
+    if version:
+        results = _fetch_table("cava_poe", record=True)
+    return results
+
+
 @router.get("/instruments")
 def get_instruments(
     version: bool = Depends(_check_version),
