@@ -47,10 +47,11 @@ class Settings(BaseSettings):
     # File Systems Configurations
     FILE_SYSTEMS = {
         "minio_s3": dict(
-            "s3", client_kwargs={"endpoint_url": "http://minio:9000"}
+            protocol="s3", 
+            client_kwargs={"endpoint_url": "http://minio:9000"}
         ),
         "aws_s3": dict(
-            "s3",
+            protocol="s3",
             skip_instance_cache=True,
             use_listings_cache=False,
             config_kwargs={"max_pool_connections": 1000},
