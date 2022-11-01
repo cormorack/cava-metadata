@@ -46,10 +46,10 @@ class Settings(BaseSettings):
 
     # File Systems Configurations
     FILE_SYSTEMS = {
-        "minio_s3": fsspec.filesystem(
+        "minio_s3": dict(
             "s3", client_kwargs={"endpoint_url": "http://minio:9000"}
         ),
-        "aws_s3": fsspec.filesystem(
+        "aws_s3": dict(
             "s3",
             skip_instance_cache=True,
             use_listings_cache=False,
