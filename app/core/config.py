@@ -108,11 +108,12 @@ TOKEN = os.environ.get("OOI_TOKEN", None)
 
 # File Systems Configurations
 FILE_SYSTEMS = {
-    "minio_s3": fsspec.filesystem(
-        "s3", client_kwargs={"endpoint_url": "http://minio:9000"}
+    "minio_s3": dict(
+        protocol="s3",
+        client_kwargs={"endpoint_url": "http://minio:9000"}
     ),
-    "aws_s3": fsspec.filesystem(
-        "s3",
+    "aws_s3": dict(
+        protocol="s3",
         skip_instance_cache=True,
         use_listings_cache=False,
         config_kwargs={"max_pool_connections": 1000},
