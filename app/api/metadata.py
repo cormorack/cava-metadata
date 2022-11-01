@@ -77,7 +77,8 @@ def _fetch_table(
     record: bool = False,
     filters: Union[list, None] = None,
 ) -> Choosable:
-    fs = settings.FILE_SYSTEMS["aws_s3"]
+    fs_kwargs = settings.FILE_SYSTEMS["aws_s3"]
+    fs = fsspec.filesystem(**fs_kwargs)
     # Clears cache everytime
     fs.invalidate_cache(settings.METADATA_BUCKET)
 
