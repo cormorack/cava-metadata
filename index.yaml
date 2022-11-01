@@ -3,6 +3,17 @@ entries:
   cava-metadata:
   - apiVersion: v2
     appVersion: 0.1.0
+    created: "2022-11-01T19:25:07.925778566Z"
+    description: Cava Metadata Service Helm Chart
+    digest: 38b59a2cef991b5b73ab423b9e84d6f2f54e9a137595f7330ec4ff61cd07dc6a
+    icon: https://interactiveoceans.washington.edu/wp-content/uploads/2018/12/interactive-oceans-logo-symbol-only_sm-150x150.png
+    name: cava-metadata
+    type: application
+    urls:
+    - https://cormorack.github.io/cava-metadata/cava-metadata-0.1.4-rc.6.tgz
+    version: 0.1.4-rc.6
+  - apiVersion: v2
+    appVersion: 0.1.0
     created: "2022-11-01T19:14:31.385952316Z"
     description: Cava Metadata Service Helm Chart
     digest: 9ad2b31f941a01f6812ba1bb72f738fa165c5e405e9ef3687be6db8c95b2395b
@@ -342,4 +353,4 @@ entries:
     urls:
     - https://cormorack.github.io/cava-metadata/cava-metadata-0.1.0-rc.1.tgz
     version: 0.1.0-rc.1
-generated: "2022-11-01T19:14:31.385337018Z"
+generated: "2022-11-01T19:25:07.92493535Z"
