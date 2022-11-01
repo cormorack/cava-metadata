@@ -11,7 +11,8 @@ dependencies:
   - sqlalchemy
   - fsspec
   - s3fs=2022.02.0
-  - gspread=5.4.0
+  - gspread
+  - google-auth-oauthlib=0.5.3
   - gunicorn
   - uvicorn
   - geopandas
