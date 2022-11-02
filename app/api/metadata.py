@@ -77,16 +77,19 @@ def _fetch_table(
     record: bool = False,
     filters: Union[list, None] = None,
 ) -> Choosable:
-    fs_kwargs = settings.FILE_SYSTEMS["aws_s3"]
-    fs = fsspec.filesystem(**fs_kwargs)
-    # Clears cache everytime
-    fs.invalidate_cache(settings.METADATA_BUCKET)
+    fs_kwargs = {
+        k: v
+        for k,v in settings.FILE_SYSTEMS["aws_s3"].items()
+        if k != 'protocol'
+    }
 
     tabledf = dataframe.read_parquet(
         os.path.join(METADATA_SOURCE, table_name),
         engine="pyarrow-dataset",
         filters=filters,
         index=False,
+        storage_options=fs_kwargs,
+        ignore_metadata_file=True,
     ).compute()
     if record:
         tabledf = _df_to_record(tabledf)
