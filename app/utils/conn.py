@@ -70,7 +70,7 @@ def split_refdes(refdes):
     return (rd_list[0], rd_list[1], "-".join(rd_list[2:]))
 
 
-def retrieve_deployments(refdes):
+async def retrieve_deployments(refdes):
     dep_port = 12587
     reflist = list(split_refdes(refdes))
     base_url_list = [BASE_URL, M2M_URL, str(dep_port), "events/deployment/inv"]

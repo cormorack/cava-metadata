@@ -3,16 +3,17 @@ import os
 import logging
 import statistics
 import math
-from typing import TypeVar, Union, Tuple, Literal
+from typing import TypeVar, Union, Tuple, Literal, Optional, List, Dict, Any
 import fsspec
 
 import geopandas as gpd
 import pandas as pd
 import pytz
-import redis
+import redis.asyncio as aioredis
 import requests
 from dask import dataframe
 from dateutil import parser
+import datetime
 from shapely.geometry import Polygon
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -21,27 +22,79 @@ from core.config import (
     BASE_URL,
     CURRENT_API_VERSION,
     M2M_URL,
-    REDIS_HOST,
-    REDIS_PORT,
     METADATA_SOURCE,
     settings,
 )
+from cache.redis import redis_dependency, ConnectionError
 from store import META
 from utils.conn import send_request, retrieve_deployments
 from utils.parsers import parse_annotations_json, unix_time_millis
+from utils.hash import hash_dict
 from api.cables import RSN_CABLE
+from api.models import InstrumentRequest
 
 router = APIRouter()
 
 logging.root.setLevel(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-try:
-    redis_cache = redis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=0)
-except Exception as e:
-    logger.error(e)
+logger = logging.getLogger('uvicorn')
 
 Choosable = TypeVar("Choosable", str, pd.DataFrame)
+
+
+async def _get_cache(
+    cache: Optional[Any] = None, key: Optional[str] = None
+) -> Any:
+    """
+    Retrieves cache from cache system
+
+    Parameters
+    ----------
+    cache : object, optional
+        Caching object that connects to the cache system,
+        currently supports aioredis
+    key : str
+        The cache key to retrieve result from
+
+    Returns
+    -------
+    Cache results
+
+    """
+    if cache is not None:
+        return await cache.get(key)
+
+
+async def _set_cache(
+    cache: Optional[Any] = None,
+    key: Optional[str] = None,
+    value: Optional[Any] = None,
+    expires: datetime.timedelta = datetime.timedelta(hours=1),
+):
+    """
+    Stores values into the cache system
+
+    Parameters
+    ----------
+    cache : object, optional
+        Caching object that connects to the cache system,
+        currently supports aioredis
+    key : str
+        The cache key to store result
+    value : any
+        The values to be stored in cache (Will be stored as JSON)
+
+    Returns
+    -------
+    None
+
+    """
+    if cache is not None:
+        # Stores cache to redis
+        await cache.set(
+            key,
+            json.dumps(value).encode('utf-8'),
+            ex=int(expires.total_seconds()),
+        )
 
 
 async def _check_version(version: float = 2.0):
@@ -72,27 +125,47 @@ def _df_to_gdf_points(df: pd.DataFrame) -> gpd.GeoDataFrame:
     )
 
 
-def _fetch_table(
+async def _fetch_table(
     table_name: str,
     record: bool = False,
     filters: Union[list, None] = None,
+    cache: Optional[Any] = None,
 ) -> Choosable:
-    fs_kwargs = {
-        k: v
-        for k,v in settings.FILE_SYSTEMS["aws_s3"].items()
-        if k != 'protocol'
-    }
+    kwargs = locals()
+    kwargs.pop("cache")
 
-    tabledf = dataframe.read_parquet(
-        os.path.join(METADATA_SOURCE, table_name),
-        engine="pyarrow-dataset",
-        filters=filters,
-        index=False,
-        storage_options=fs_kwargs,
-        ignore_metadata_file=True,
-    ).compute()
+    # Create key hash from inputs
+    cache_key = hash_dict(kwargs)
+    cached_result = await _get_cache(cache, cache_key)
+
+    if cached_result is not None:
+        cached_dict = json.loads(cached_result)
+        tabledf = pd.DataFrame(cached_dict)
+    else:
+        fs_kwargs = {
+            k: v
+            for k, v in settings.FILE_SYSTEMS["aws_s3"].items()
+            if k != 'protocol'
+        }
+
+        tabledf = dataframe.read_parquet(
+            os.path.join(METADATA_SOURCE, table_name),
+            engine="pyarrow-dataset",
+            filters=filters,
+            index=False,
+            storage_options=fs_kwargs,
+            ignore_metadata_file=True,
+        ).compute()
     if record:
         tabledf = _df_to_record(tabledf)
+
+    await _set_cache(
+        cache,
+        cache_key,
+        value=_df_to_record(tabledf)
+        if isinstance(tabledf, pd.DataFrame)
+        else tabledf,
+    )
     return tabledf
 
 
@@ -200,7 +273,7 @@ def _get_inst_params(refdes):
     return new_inst
 
 
-def _create_simple_view(instrument_list):
+async def _create_simple_view(instrument_list):
     new_list = []
     for inst in instrument_list:
         inst_view = {}
@@ -217,12 +290,12 @@ def _create_simple_view(instrument_list):
             param_text = "; ".join(
                 list(filter(lambda i: "time" not in i.lower(), nameset))
             )
-        site = _fetch_table(
+        site = await _fetch_table(
             "cava_sites",
             record=True,
             filters=[("reference_designator", "==", inst["site_rd"])],
         )[0]
-        infra = _fetch_table(
+        infra = await _fetch_table(
             "cava_infrastructures",
             record=True,
             filters=[("reference_designator", "==", inst["infra_rd"])],
@@ -251,19 +324,47 @@ def _create_column_filter(
 
 
 @router.get("/arrays")
-def get_arrays(version: bool = Depends(_check_version)):
+async def get_arrays(
+    version: bool = Depends(_check_version), cache=Depends(redis_dependency)
+):
     if version:
-        results = _fetch_table("cava_arrays", record=True)
+        try:
+            results = await _fetch_table(
+                "cava_arrays", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_arrays", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
 @router.get("/areas")
-def get_site_areas(
-    version: bool = Depends(_check_version), geojson: bool = True
+async def get_site_areas(
+    version: bool = Depends(_check_version),
+    geojson: bool = True,
+    cache=Depends(redis_dependency),
 ):
     if version:
         # for now drop empty coordinates
-        tabledf = _fetch_table("cava_areas")
+        try:
+            tabledf = await _fetch_table("cava_areas", cache=cache)
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                tabledf = await _fetch_table("cava_areas", cache=None)
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
         tabledf = tabledf.dropna(subset=['coordinates'])
         if geojson:
             tabledf.loc[:, "geometry"] = tabledf.coordinates.apply(_get_poly)
@@ -280,68 +381,125 @@ def get_site_areas(
 
 
 @router.get("/infrastructures")
-def get_infrastructures(version: bool = Depends(_check_version)):
+async def get_infrastructures(
+    version: bool = Depends(_check_version), cache=Depends(redis_dependency)
+):
     if version:
-        results = _fetch_table("cava_infrastructures", record=True)
+        try:
+            results = await _fetch_table(
+                "cava_infrastructures", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_infrastructures", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
 @router.get("/points-of-exploration")
-def get_points_of_exploration(version: bool = Depends(_check_version)):
+async def get_points_of_exploration(
+    version: bool = Depends(_check_version), cache=Depends(redis_dependency)
+):
     if version:
-        results = _fetch_table("cava_poe", record=True)
+        try:
+            results = await _fetch_table("cava_poe", record=True, cache=cache)
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_poe", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
+async def _get_instruments(
+    instrument_request: InstrumentRequest,
+    filters: Optional[List] = None,
+    cache: Optional[Any] = None,
+) -> List[Dict[Any, Any]]:
+    results = await _fetch_table(
+        "cava_instruments", record=True, filters=filters, cache=cache
+    )
+    if instrument_request.refdes:
+        rd_list = instrument_request.refdes.strip(" ").split(",")
+        results = list(
+            filter(
+                lambda r: r["reference_designator"] in rd_list,
+                results,
+            )
+        )
+
+    if instrument_request.include_params:
+        final_results = [
+            dict(
+                **_get_inst_params(res["reference_designator"]),
+                **res,
+            )
+            for res in results
+        ]
+    else:
+        final_results = results
+
+    return final_results
+
+
 @router.get("/instruments")
-def get_instruments(
+async def get_instruments(
+    instrument_request: InstrumentRequest = Depends(),
     version: bool = Depends(_check_version),
-    site: str = None,
-    group: str = None,
-    infrastructure: str = None,
-    area: str = None,
-    include_params: bool = False,
-    refdes: str = None,
+    cache: aioredis.client.Redis = Depends(redis_dependency),
 ):
     filters = None
     final_results = []
     if version:
-        if any([site, group, infrastructure, area]):
+        if any(
+            [
+                instrument_request.site,
+                instrument_request.group,
+                instrument_request.infrastructure,
+                instrument_request.area,
+            ]
+        ):
             filters = []
-            if site:
-                filters.append(_create_column_filter("site_rd", site))
-
-            if group:
-                filters.append(_create_column_filter("group_code", group))
-
-            if infrastructure:
+            if instrument_request.site:
                 filters.append(
-                    _create_column_filter("infra_rd", infrastructure)
+                    _create_column_filter("site_rd", instrument_request.site)
                 )
 
-            if area:
-                filters.append(_create_column_filter("area_rd", area))
+            if instrument_request.group:
+                filters.append(
+                    _create_column_filter(
+                        "group_code", instrument_request.group
+                    )
+                )
+
+            if instrument_request.infrastructure:
+                filters.append(
+                    _create_column_filter(
+                        "infra_rd", instrument_request.infrastructure
+                    )
+                )
+
+            if instrument_request.area:
+                filters.append(
+                    _create_column_filter("area_rd", instrument_request.area)
+                )
         try:
-            results = _fetch_table(
-                "cava_instruments", record=True, filters=filters
+            final_results = await _get_instruments(
+                instrument_request, filters, cache=cache
             )
-            if refdes:
-                rd_list = refdes.strip(" ").split(",")
-                results = list(
-                    filter(
-                        lambda r: r["reference_designator"] in rd_list, results
-                    )
-                )
-
-            if include_params:
-                final_results = [
-                    dict(
-                        **_get_inst_params(res["reference_designator"]), **res
-                    )
-                    for res in results
-                ]
-            else:
-                final_results = results
 
             if len(final_results) == 0:
                 return JSONResponse(
@@ -349,46 +507,66 @@ def get_instruments(
                     content={"message": "Instruments not found"},
                 )
         except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail={"message": f"{e}"},
-            )
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                final_results = await _get_instruments(
+                    instrument_request, filters, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return final_results
 
 
 @router.get("/instrument/{refdes}")
-def get_single_instrument(
-    version: bool = Depends(_check_version), refdes: str = ""
+async def get_single_instrument(
+    version: bool = Depends(_check_version),
+    refdes: str = "",
+    cache=Depends(redis_dependency),
 ):
     filters = None
     if version:
         if refdes:
             filters = [("reference_designator", "==", refdes)]
         try:
-            results = _fetch_table(
-                "cava_instruments", record=True, filters=filters
+            results = await _fetch_table(
+                "cava_instruments", record=True, filters=filters, cache=cache
             )
-            final_results = [
-                dict(**res, **_get_inst_params(res["reference_designator"]))
-                for res in results
-            ]
-            if len(final_results) == 1:
-                return final_results[0]
-            else:
-                return JSONResponse(
-                    status_code=204,
-                    content={"message": f"{refdes} not found"},
-                )
         except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail={"message": f"{e}"},
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_instruments",
+                    record=True,
+                    filters=filters,
+                    cache=None,
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
+
+        final_results = [
+            dict(**res, **_get_inst_params(res["reference_designator"]))
+            for res in results
+        ]
+        if len(final_results) == 1:
+            return final_results[0]
+        else:
+            return JSONResponse(
+                status_code=204,
+                content={"message": f"{refdes} not found"},
             )
 
 
 @router.get("/instrument/{refdes}/streams")
-def get_instrument_streams(
-    version: bool = Depends(_check_version), refdes: str = ""
+async def get_instrument_streams(
+    version: bool = Depends(_check_version),
+    refdes: str = "",
+    cache=Depends(redis_dependency),
 ):
     filters = None
     if version:
@@ -398,25 +576,77 @@ def get_instrument_streams(
                 ("stream_type", "==", "Science"),
             ]
 
-        results = _fetch_table("ooi_streams", record=True, filters=filters)
+        try:
+            results = await _fetch_table(
+                "ooi_streams", record=True, filters=filters, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "ooi_streams", record=True, filters=filters, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
 @router.get("/instrument/{refdes}/deployments")
 async def get_instrument_deployments(
-    version: bool = Depends(_check_version), refdes: str = ""
+    version: bool = Depends(_check_version),
+    refdes: str = "",
+    cache=Depends(redis_dependency),
 ):
     deployments = []
     if version:
-        deployments = await retrieve_deployments(refdes)
+        try:
+            cache_key = hash_dict(
+                {'refdes': refdes, 'func': 'get_instrument_deployments'}
+            )
+            cached_result = await _get_cache(cache, cache_key)
+            if cached_result is not None:
+                deployments = json.loads(cached_result)
+            else:
+                deployments = await retrieve_deployments(refdes)
+
+                await _set_cache(cache, cache_key, value=deployments)
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                deployments = await retrieve_deployments(refdes)
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
 
     return deployments
 
 
 @router.get("/instruments/groups")
-def get_instrument_groups(version: bool = Depends(_check_version)):
+async def get_instrument_groups(
+    version: bool = Depends(_check_version),
+    cache=Depends(redis_dependency),
+):
     if version:
-        results = _fetch_table("cava_instrument-groups", record=True)
+        try:
+            results = await _fetch_table(
+                "cava_instrument-groups", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_instrument-groups", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
@@ -426,41 +656,112 @@ async def get_insts_catalog():
 
 
 @router.get("/data-products")
-def get_data_products(version: bool = Depends(_check_version)):
+async def get_data_products(
+    version: bool = Depends(_check_version),
+    cache=Depends(redis_dependency),
+):
     if version:
-        results = _fetch_table("cava_dataproducts", record=True)
+        try:
+            results = await _fetch_table(
+                "cava_dataproducts", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_dataproducts", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
 @router.get("/data-products/groups")
-def get_data_product_groups(version: bool = Depends(_check_version)):
+async def get_data_product_groups(
+    version: bool = Depends(_check_version),
+    cache=Depends(redis_dependency),
+):
     if version:
-        results = _fetch_table("cava_dataproduct-groups", record=True)
+        try:
+            results = await _fetch_table(
+                "cava_dataproduct-groups", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_dataproduct-groups", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
 @router.get("/parameters")
-def get_parameters(version: bool = Depends(_check_version)):
+async def get_parameters(
+    version: bool = Depends(_check_version),
+    cache=Depends(redis_dependency),
+):
     if version:
-        results = _fetch_table("ooi_parameters", record=True)
+        try:
+            results = await _fetch_table(
+                "ooi_parameters", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "ooi_parameters", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
 @router.get("/streams")
-def get_streams(version: bool = Depends(_check_version), inst_rd: str = ""):
+async def get_streams(
+    version: bool = Depends(_check_version),
+    inst_rd: str = "",
+    cache=Depends(redis_dependency),
+):
     filters = None
     if version:
         if any([inst_rd]):
             filters = [("stream_type", "==", "Science")]
             if inst_rd:
                 filters.append(("reference_designator", "==", inst_rd))
-        results = _fetch_table("ooi_streams", record=True, filters=filters)
+        try:
+            results = await _fetch_table(
+                "ooi_streams", record=True, filters=filters, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "ooi_streams", record=True, filters=filters, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
 @router.get("/streams/{refdes}")
-def get_single_stream(
-    version: bool = Depends(_check_version), refdes: str = ""
+async def get_single_stream(
+    version: bool = Depends(_check_version),
+    refdes: str = "",
+    cache=Depends(redis_dependency),
 ):
     filters = None
     if version:
@@ -469,14 +770,42 @@ def get_single_stream(
                 ("stream", "==", refdes),
                 ("stream_type", "==", "Science"),
             ]
-        results = _fetch_table("ooi_streams", record=True, filters=filters)
+        try:
+            results = await _fetch_table(
+                "ooi_streams", record=True, filters=filters, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "ooi_streams", record=True, filters=filters, cache=cache
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
 @router.get("/sites")
-def get_sites(version: bool = Depends(_check_version), geojson: bool = True):
+async def get_sites(
+    version: bool = Depends(_check_version),
+    geojson: bool = True,
+    cache=Depends(redis_dependency),
+):
     if version:
-        tabledf = _fetch_table("cava_sites")
+        try:
+            tabledf = await _fetch_table("cava_sites", cache=cache)
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                tabledf = await _fetch_table("cava_sites", cache=None)
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
         tabledf = tabledf[tabledf.active_display == True]  # noqa
         if geojson:
             results = json.loads(_df_to_gdf_points(tabledf).to_json())
@@ -501,10 +830,26 @@ async def get_instruments_catalog(version: bool = Depends(_check_version)):
 
 
 @router.get("/global_ranges")
-def get_global_ranges(version: bool = Depends(_check_version)):
+async def get_global_ranges(
+    version: bool = Depends(_check_version),
+    cache=Depends(redis_dependency),
+):
     if version:
-        results = _fetch_table("global_ranges", record=True)
-
+        try:
+            results = await _fetch_table(
+                "global_ranges", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "global_ranges", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
