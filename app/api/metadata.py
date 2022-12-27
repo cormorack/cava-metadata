@@ -25,7 +25,7 @@ from core.config import (
     METADATA_SOURCE,
     settings,
 )
-from cache.redis import redis_dependency
+from cache.redis import redis_dependency, ConnectionError
 from store import META
 from utils.conn import send_request, retrieve_deployments
 from utils.parsers import parse_annotations_json, unix_time_millis
@@ -35,7 +35,7 @@ from api.models import InstrumentRequest
 router = APIRouter()
 
 logging.root.setLevel(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('uvicorn')
 
 Choosable = TypeVar("Choosable", str, pd.DataFrame)
 
@@ -433,10 +433,14 @@ async def get_instruments(
                     content={"message": "Instruments not found"},
                 )
         except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail={"message": f"{e}"},
-            )
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                final_results = _get_instruments(instrument_request, filters)
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return final_results
 
 
