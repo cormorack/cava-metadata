@@ -3,16 +3,17 @@ import os
 import logging
 import statistics
 import math
-from typing import TypeVar, Union, Tuple, Literal
+from typing import TypeVar, Union, Tuple, Literal, Optional, List, Dict, Any
 import fsspec
 
 import geopandas as gpd
 import pandas as pd
 import pytz
-import redis
+import redis.asyncio as aioredis
 import requests
 from dask import dataframe
 from dateutil import parser
+import datetime
 from shapely.geometry import Polygon
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
@@ -21,27 +22,78 @@ from core.config import (
     BASE_URL,
     CURRENT_API_VERSION,
     M2M_URL,
-    REDIS_HOST,
-    REDIS_PORT,
     METADATA_SOURCE,
     settings,
 )
+from cache.redis import redis_dependency
 from store import META
 from utils.conn import send_request, retrieve_deployments
 from utils.parsers import parse_annotations_json, unix_time_millis
 from api.cables import RSN_CABLE
+from api.models import InstrumentRequest
 
 router = APIRouter()
 
 logging.root.setLevel(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-try:
-    redis_cache = redis.Redis(host=REDIS_HOST, port=int(REDIS_PORT), db=0)
-except Exception as e:
-    logger.error(e)
-
 Choosable = TypeVar("Choosable", str, pd.DataFrame)
+
+
+async def _get_cache(
+    cache: Optional[Any] = None, key: Optional[str] = None
+) -> Any:
+    """
+    Retrieves cache from cache system
+
+    Parameters
+    ----------
+    cache : object, optional
+        Caching object that connects to the cache system,
+        currently supports aioredis
+    key : str
+        The cache key to retrieve result from
+
+    Returns
+    -------
+    Cache results
+
+    """
+    if cache is not None:
+        return await cache.get(key)
+
+
+async def _set_cache(
+    cache: Optional[Any] = None,
+    key: Optional[str] = None,
+    value: Optional[Any] = None,
+    expires: datetime.timedelta = datetime.timedelta(hours=1)
+):
+    """
+    Stores values into the cache system
+
+    Parameters
+    ----------
+    cache : object, optional
+        Caching object that connects to the cache system,
+        currently supports aioredis
+    key : str
+        The cache key to store result
+    value : any
+        The values to be stored in cache (Will be stored as JSON)
+
+    Returns
+    -------
+    None
+
+    """
+    if cache is not None:
+        # Stores cache to redis
+        await cache.set(
+            key,
+            json.dumps(value).encode('utf-8'),
+            ex=int(expires.total_seconds()),
+        )
 
 
 async def _check_version(version: float = 2.0):
@@ -79,7 +131,7 @@ def _fetch_table(
 ) -> Choosable:
     fs_kwargs = {
         k: v
-        for k,v in settings.FILE_SYSTEMS["aws_s3"].items()
+        for k, v in settings.FILE_SYSTEMS["aws_s3"].items()
         if k != 'protocol'
     }
 
@@ -293,55 +345,87 @@ def get_points_of_exploration(version: bool = Depends(_check_version)):
     return results
 
 
+def _get_instruments(
+    instrument_request: InstrumentRequest, filters: Optional[List] = None
+) -> List[Dict[Any, Any]]:
+    results = _fetch_table("cava_instruments", record=True, filters=filters)
+    if instrument_request.refdes:
+        rd_list = instrument_request.refdes.strip(" ").split(",")
+        results = list(
+            filter(
+                lambda r: r["reference_designator"] in rd_list,
+                results,
+            )
+        )
+
+    if instrument_request.include_params:
+        final_results = [
+            dict(
+                **_get_inst_params(res["reference_designator"]),
+                **res,
+            )
+            for res in results
+        ]
+    else:
+        final_results = results
+
+    return final_results
+
+
 @router.get("/instruments")
-def get_instruments(
+async def get_instruments(
+    instrument_request: InstrumentRequest = Depends(),
     version: bool = Depends(_check_version),
-    site: str = None,
-    group: str = None,
-    infrastructure: str = None,
-    area: str = None,
-    include_params: bool = False,
-    refdes: str = None,
+    cache: aioredis.client.Redis = Depends(redis_dependency),
 ):
     filters = None
     final_results = []
     if version:
-        if any([site, group, infrastructure, area]):
+        if any(
+            [
+                instrument_request.site,
+                instrument_request.group,
+                instrument_request.infrastructure,
+                instrument_request.area,
+            ]
+        ):
             filters = []
-            if site:
-                filters.append(_create_column_filter("site_rd", site))
-
-            if group:
-                filters.append(_create_column_filter("group_code", group))
-
-            if infrastructure:
+            if instrument_request.site:
                 filters.append(
-                    _create_column_filter("infra_rd", infrastructure)
+                    _create_column_filter("site_rd", instrument_request.site)
                 )
 
-            if area:
-                filters.append(_create_column_filter("area_rd", area))
+            if instrument_request.group:
+                filters.append(
+                    _create_column_filter(
+                        "group_code", instrument_request.group
+                    )
+                )
+
+            if instrument_request.infrastructure:
+                filters.append(
+                    _create_column_filter(
+                        "infra_rd", instrument_request.infrastructure
+                    )
+                )
+
+            if instrument_request.area:
+                filters.append(
+                    _create_column_filter("area_rd", instrument_request.area)
+                )
         try:
-            results = _fetch_table(
-                "cava_instruments", record=True, filters=filters
-            )
-            if refdes:
-                rd_list = refdes.strip(" ").split(",")
-                results = list(
-                    filter(
-                        lambda r: r["reference_designator"] in rd_list, results
-                    )
-                )
+            cache_key = instrument_request._key
+            # Get cache from redis
+            cached_result = await _get_cache(cache, cache_key)
 
-            if include_params:
-                final_results = [
-                    dict(
-                        **_get_inst_params(res["reference_designator"]), **res
-                    )
-                    for res in results
-                ]
+            if cached_result is not None:
+                # use cache result
+                final_results = json.loads(cached_result)
             else:
-                final_results = results
+                final_results = _get_instruments(instrument_request, filters)
+
+                # Stores cache to redis
+                await _set_cache(cache, cache_key, final_results)
 
             if len(final_results) == 0:
                 return JSONResponse(

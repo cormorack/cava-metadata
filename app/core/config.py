@@ -1,11 +1,13 @@
 import os
 import fsspec
 
-from pydantic import BaseSettings
+from pydantic import BaseSettings, RedisDsn, validator
+from kombu.utils.url import safequote
 
 
 class Settings(BaseSettings):
-    """ Setting for the whole application """
+    """Setting for the whole application"""
+
     # TODO: Switch over fully to this settings
     SERVICE_NAME = "Metadata Service"
     SERVICE_ID = "metadata"
@@ -35,8 +37,9 @@ class Settings(BaseSettings):
     AWS_SECRET = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
 
     # Redis configurations
-    REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
-    REDIS_PORT = os.environ.get("REDIS_PORT", 6379)
+    REDIS_URI: RedisDsn = os.environ.get(
+        "REDIS_URI", "redis://localhost:6379/0"
+    )
 
     # OOI Configurations
     BASE_URL = "https://ooinet.oceanobservatories.org"
@@ -47,8 +50,7 @@ class Settings(BaseSettings):
     # File Systems Configurations
     FILE_SYSTEMS = {
         "minio_s3": dict(
-            protocol="s3", 
-            client_kwargs={"endpoint_url": "http://minio:9000"}
+            protocol="s3", client_kwargs={"endpoint_url": "http://minio:9000"}
         ),
         "aws_s3": dict(
             protocol="s3",
@@ -57,7 +59,10 @@ class Settings(BaseSettings):
             config_kwargs={"max_pool_connections": 1000},
         ),
     }
-    GOOGLE_SERVICE_JSON = os.environ.get("GOOGLE_SERVICE_JSON", "",)
+    GOOGLE_SERVICE_JSON = os.environ.get(
+        "GOOGLE_SERVICE_JSON",
+        "",
+    )
     DATA_BUCKET = 'ooi-data'
 
     # Data sources
@@ -110,8 +115,7 @@ TOKEN = os.environ.get("OOI_TOKEN", None)
 # File Systems Configurations
 FILE_SYSTEMS = {
     "minio_s3": dict(
-        protocol="s3",
-        client_kwargs={"endpoint_url": "http://minio:9000"}
+        protocol="s3", client_kwargs={"endpoint_url": "http://minio:9000"}
     ),
     "aws_s3": dict(
         protocol="s3",
@@ -120,7 +124,10 @@ FILE_SYSTEMS = {
         config_kwargs={"max_pool_connections": 1000},
     ),
 }
-GOOGLE_SERVICE_JSON = os.environ.get("GOOGLE_SERVICE_JSON", "",)
+GOOGLE_SERVICE_JSON = os.environ.get(
+    "GOOGLE_SERVICE_JSON",
+    "",
+)
 DATA_BUCKET = 'ooi-data'
 
 # Data sources
