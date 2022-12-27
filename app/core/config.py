@@ -1,8 +1,6 @@
 import os
-import fsspec
 
-from pydantic import BaseSettings, RedisDsn, validator
-from kombu.utils.url import safequote
+from pydantic import BaseSettings, RedisDsn
 
 
 class Settings(BaseSettings):
