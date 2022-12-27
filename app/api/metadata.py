@@ -29,6 +29,7 @@ from cache.redis import redis_dependency, ConnectionError
 from store import META
 from utils.conn import send_request, retrieve_deployments
 from utils.parsers import parse_annotations_json, unix_time_millis
+from utils.hash import hash_dict
 from api.cables import RSN_CABLE
 from api.models import InstrumentRequest
 
@@ -67,7 +68,7 @@ async def _set_cache(
     cache: Optional[Any] = None,
     key: Optional[str] = None,
     value: Optional[Any] = None,
-    expires: datetime.timedelta = datetime.timedelta(hours=1)
+    expires: datetime.timedelta = datetime.timedelta(hours=1),
 ):
     """
     Stores values into the cache system
@@ -124,27 +125,47 @@ def _df_to_gdf_points(df: pd.DataFrame) -> gpd.GeoDataFrame:
     )
 
 
-def _fetch_table(
+async def _fetch_table(
     table_name: str,
     record: bool = False,
     filters: Union[list, None] = None,
+    cache: Optional[Any] = None,
 ) -> Choosable:
-    fs_kwargs = {
-        k: v
-        for k, v in settings.FILE_SYSTEMS["aws_s3"].items()
-        if k != 'protocol'
-    }
+    kwargs = locals()
+    kwargs.pop("cache")
 
-    tabledf = dataframe.read_parquet(
-        os.path.join(METADATA_SOURCE, table_name),
-        engine="pyarrow-dataset",
-        filters=filters,
-        index=False,
-        storage_options=fs_kwargs,
-        ignore_metadata_file=True,
-    ).compute()
+    # Create key hash from inputs
+    cache_key = hash_dict(kwargs)
+    cached_result = await _get_cache(cache, cache_key)
+
+    if cached_result is not None:
+        cached_dict = json.loads(cached_result)
+        tabledf = pd.DataFrame(cached_dict)
+    else:
+        fs_kwargs = {
+            k: v
+            for k, v in settings.FILE_SYSTEMS["aws_s3"].items()
+            if k != 'protocol'
+        }
+
+        tabledf = dataframe.read_parquet(
+            os.path.join(METADATA_SOURCE, table_name),
+            engine="pyarrow-dataset",
+            filters=filters,
+            index=False,
+            storage_options=fs_kwargs,
+            ignore_metadata_file=True,
+        ).compute()
     if record:
         tabledf = _df_to_record(tabledf)
+
+    await _set_cache(
+        cache,
+        cache_key,
+        value=_df_to_record(tabledf)
+        if isinstance(tabledf, pd.DataFrame)
+        else tabledf,
+    )
     return tabledf
 
 
@@ -252,7 +273,7 @@ def _get_inst_params(refdes):
     return new_inst
 
 
-def _create_simple_view(instrument_list):
+async def _create_simple_view(instrument_list):
     new_list = []
     for inst in instrument_list:
         inst_view = {}
@@ -269,12 +290,12 @@ def _create_simple_view(instrument_list):
             param_text = "; ".join(
                 list(filter(lambda i: "time" not in i.lower(), nameset))
             )
-        site = _fetch_table(
+        site = await _fetch_table(
             "cava_sites",
             record=True,
             filters=[("reference_designator", "==", inst["site_rd"])],
         )[0]
-        infra = _fetch_table(
+        infra = await _fetch_table(
             "cava_infrastructures",
             record=True,
             filters=[("reference_designator", "==", inst["infra_rd"])],
@@ -303,19 +324,23 @@ def _create_column_filter(
 
 
 @router.get("/arrays")
-def get_arrays(version: bool = Depends(_check_version)):
+async def get_arrays(
+    version: bool = Depends(_check_version), cache=Depends(redis_dependency)
+):
     if version:
-        results = _fetch_table("cava_arrays", record=True)
+        results = await _fetch_table("cava_arrays", record=True, cache=cache)
     return results
 
 
 @router.get("/areas")
-def get_site_areas(
-    version: bool = Depends(_check_version), geojson: bool = True
+async def get_site_areas(
+    version: bool = Depends(_check_version),
+    geojson: bool = True,
+    cache=Depends(redis_dependency),
 ):
     if version:
         # for now drop empty coordinates
-        tabledf = _fetch_table("cava_areas")
+        tabledf = await _fetch_table("cava_areas", cache=cache)
         tabledf = tabledf.dropna(subset=['coordinates'])
         if geojson:
             tabledf.loc[:, "geometry"] = tabledf.coordinates.apply(_get_poly)
@@ -332,23 +357,33 @@ def get_site_areas(
 
 
 @router.get("/infrastructures")
-def get_infrastructures(version: bool = Depends(_check_version)):
+async def get_infrastructures(
+    version: bool = Depends(_check_version), cache=Depends(redis_dependency)
+):
     if version:
-        results = _fetch_table("cava_infrastructures", record=True)
+        results = await _fetch_table(
+            "cava_infrastructures", record=True, cache=cache
+        )
     return results
 
 
 @router.get("/points-of-exploration")
-def get_points_of_exploration(version: bool = Depends(_check_version)):
+async def get_points_of_exploration(
+    version: bool = Depends(_check_version), cache=Depends(redis_dependency)
+):
     if version:
-        results = _fetch_table("cava_poe", record=True)
+        results = await _fetch_table("cava_poe", record=True, cache=cache)
     return results
 
 
-def _get_instruments(
-    instrument_request: InstrumentRequest, filters: Optional[List] = None
+async def _get_instruments(
+    instrument_request: InstrumentRequest,
+    filters: Optional[List] = None,
+    cache: Optional[Any] = None,
 ) -> List[Dict[Any, Any]]:
-    results = _fetch_table("cava_instruments", record=True, filters=filters)
+    results = await _fetch_table(
+        "cava_instruments", record=True, filters=filters, cache=cache
+    )
     if instrument_request.refdes:
         rd_list = instrument_request.refdes.strip(" ").split(",")
         results = list(
@@ -414,18 +449,9 @@ async def get_instruments(
                     _create_column_filter("area_rd", instrument_request.area)
                 )
         try:
-            cache_key = instrument_request._key
-            # Get cache from redis
-            cached_result = await _get_cache(cache, cache_key)
-
-            if cached_result is not None:
-                # use cache result
-                final_results = json.loads(cached_result)
-            else:
-                final_results = _get_instruments(instrument_request, filters)
-
-                # Stores cache to redis
-                await _set_cache(cache, cache_key, final_results)
+            final_results = await _get_instruments(
+                instrument_request, filters, cache=cache
+            )
 
             if len(final_results) == 0:
                 return JSONResponse(
@@ -435,7 +461,9 @@ async def get_instruments(
         except Exception as e:
             if isinstance(e, ConnectionError):
                 logger.error("Redis disconnected! Fetching from source.")
-                final_results = _get_instruments(instrument_request, filters)
+                final_results = await _get_instruments(
+                    instrument_request, filters, cache=None
+                )
             else:
                 raise HTTPException(
                     status_code=500,
@@ -445,16 +473,18 @@ async def get_instruments(
 
 
 @router.get("/instrument/{refdes}")
-def get_single_instrument(
-    version: bool = Depends(_check_version), refdes: str = ""
+async def get_single_instrument(
+    version: bool = Depends(_check_version),
+    refdes: str = "",
+    cache=Depends(redis_dependency),
 ):
     filters = None
     if version:
         if refdes:
             filters = [("reference_designator", "==", refdes)]
         try:
-            results = _fetch_table(
-                "cava_instruments", record=True, filters=filters
+            results = await _fetch_table(
+                "cava_instruments", record=True, filters=filters, cache=cache
             )
             final_results = [
                 dict(**res, **_get_inst_params(res["reference_designator"]))
@@ -475,8 +505,10 @@ def get_single_instrument(
 
 
 @router.get("/instrument/{refdes}/streams")
-def get_instrument_streams(
-    version: bool = Depends(_check_version), refdes: str = ""
+async def get_instrument_streams(
+    version: bool = Depends(_check_version),
+    refdes: str = "",
+    cache=Depends(redis_dependency),
 ):
     filters = None
     if version:
@@ -486,25 +518,48 @@ def get_instrument_streams(
                 ("stream_type", "==", "Science"),
             ]
 
-        results = _fetch_table("ooi_streams", record=True, filters=filters)
+        results = await _fetch_table(
+            "ooi_streams", record=True, filters=filters, cache=cache
+        )
     return results
 
 
 @router.get("/instrument/{refdes}/deployments")
 async def get_instrument_deployments(
-    version: bool = Depends(_check_version), refdes: str = ""
+    version: bool = Depends(_check_version),
+    refdes: str = "",
+    cache=Depends(redis_dependency),
 ):
     deployments = []
     if version:
-        deployments = await retrieve_deployments(refdes)
+        cache_key = hash_dict({
+            'refdes': refdes,
+            'func': 'get_instrument_deployments'
+        })
+        cached_result = await _get_cache(cache, cache_key)
+        if cached_result is not None:
+            deployments = json.loads(cached_result)
+        else:
+            deployments = await retrieve_deployments(refdes)
+
+            await _set_cache(
+                cache,
+                cache_key,
+                value=deployments
+            )
 
     return deployments
 
 
 @router.get("/instruments/groups")
-def get_instrument_groups(version: bool = Depends(_check_version)):
+async def get_instrument_groups(
+    version: bool = Depends(_check_version),
+    cache=Depends(redis_dependency),
+):
     if version:
-        results = _fetch_table("cava_instrument-groups", record=True)
+        results = await _fetch_table(
+            "cava_instrument-groups", record=True, cache=cache
+        )
     return results
 
 
@@ -514,41 +569,64 @@ async def get_insts_catalog():
 
 
 @router.get("/data-products")
-def get_data_products(version: bool = Depends(_check_version)):
+async def get_data_products(
+    version: bool = Depends(_check_version),
+    cache=Depends(redis_dependency),
+):
     if version:
-        results = _fetch_table("cava_dataproducts", record=True)
+        results = await _fetch_table(
+            "cava_dataproducts", record=True, cache=cache
+        )
     return results
 
 
 @router.get("/data-products/groups")
-def get_data_product_groups(version: bool = Depends(_check_version)):
+async def get_data_product_groups(
+    version: bool = Depends(_check_version),
+    cache=Depends(redis_dependency),
+):
     if version:
-        results = _fetch_table("cava_dataproduct-groups", record=True)
+        results = await _fetch_table(
+            "cava_dataproduct-groups", record=True, cache=cache
+        )
     return results
 
 
 @router.get("/parameters")
-def get_parameters(version: bool = Depends(_check_version)):
+async def get_parameters(
+    version: bool = Depends(_check_version),
+    cache=Depends(redis_dependency),
+):
     if version:
-        results = _fetch_table("ooi_parameters", record=True)
+        results = await _fetch_table(
+            "ooi_parameters", record=True, cache=cache
+        )
     return results
 
 
 @router.get("/streams")
-def get_streams(version: bool = Depends(_check_version), inst_rd: str = ""):
+async def get_streams(
+    version: bool = Depends(_check_version),
+    inst_rd: str = "",
+    cache=Depends(redis_dependency),
+):
     filters = None
     if version:
         if any([inst_rd]):
             filters = [("stream_type", "==", "Science")]
             if inst_rd:
                 filters.append(("reference_designator", "==", inst_rd))
-        results = _fetch_table("ooi_streams", record=True, filters=filters)
+        results = await _fetch_table(
+            "ooi_streams", record=True, filters=filters, cache=cache
+        )
     return results
 
 
 @router.get("/streams/{refdes}")
-def get_single_stream(
-    version: bool = Depends(_check_version), refdes: str = ""
+async def get_single_stream(
+    version: bool = Depends(_check_version),
+    refdes: str = "",
+    cache=Depends(redis_dependency),
 ):
     filters = None
     if version:
@@ -557,14 +635,20 @@ def get_single_stream(
                 ("stream", "==", refdes),
                 ("stream_type", "==", "Science"),
             ]
-        results = _fetch_table("ooi_streams", record=True, filters=filters)
+        results = await _fetch_table(
+            "ooi_streams", record=True, filters=filters, cache=cache
+        )
     return results
 
 
 @router.get("/sites")
-def get_sites(version: bool = Depends(_check_version), geojson: bool = True):
+async def get_sites(
+    version: bool = Depends(_check_version),
+    geojson: bool = True,
+    cache=Depends(redis_dependency),
+):
     if version:
-        tabledf = _fetch_table("cava_sites")
+        tabledf = await _fetch_table("cava_sites", cache=cache)
         tabledf = tabledf[tabledf.active_display == True]  # noqa
         if geojson:
             results = json.loads(_df_to_gdf_points(tabledf).to_json())
@@ -589,9 +673,12 @@ async def get_instruments_catalog(version: bool = Depends(_check_version)):
 
 
 @router.get("/global_ranges")
-def get_global_ranges(version: bool = Depends(_check_version)):
+async def get_global_ranges(
+    version: bool = Depends(_check_version),
+    cache=Depends(redis_dependency),
+):
     if version:
-        results = _fetch_table("global_ranges", record=True)
+        results = await _fetch_table("global_ranges", record=True, cache=cache)
 
     return results
 
