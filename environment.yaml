@@ -6,7 +6,7 @@ dependencies:
   - fastapi
   - uvicorn
   - pymongo
-  - redis>=4.2
+  - redis-py>=4.3
   - nomkl
   - sqlalchemy
   - fsspec
