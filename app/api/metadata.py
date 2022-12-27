@@ -328,7 +328,21 @@ async def get_arrays(
     version: bool = Depends(_check_version), cache=Depends(redis_dependency)
 ):
     if version:
-        results = await _fetch_table("cava_arrays", record=True, cache=cache)
+        try:
+            results = await _fetch_table(
+                "cava_arrays", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_arrays", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
@@ -340,7 +354,17 @@ async def get_site_areas(
 ):
     if version:
         # for now drop empty coordinates
-        tabledf = await _fetch_table("cava_areas", cache=cache)
+        try:
+            tabledf = await _fetch_table("cava_areas", cache=cache)
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                tabledf = await _fetch_table("cava_areas", cache=None)
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
         tabledf = tabledf.dropna(subset=['coordinates'])
         if geojson:
             tabledf.loc[:, "geometry"] = tabledf.coordinates.apply(_get_poly)
@@ -361,9 +385,21 @@ async def get_infrastructures(
     version: bool = Depends(_check_version), cache=Depends(redis_dependency)
 ):
     if version:
-        results = await _fetch_table(
-            "cava_infrastructures", record=True, cache=cache
-        )
+        try:
+            results = await _fetch_table(
+                "cava_infrastructures", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_infrastructures", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
@@ -372,7 +408,19 @@ async def get_points_of_exploration(
     version: bool = Depends(_check_version), cache=Depends(redis_dependency)
 ):
     if version:
-        results = await _fetch_table("cava_poe", record=True, cache=cache)
+        try:
+            results = await _fetch_table("cava_poe", record=True, cache=cache)
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_poe", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
@@ -486,21 +534,31 @@ async def get_single_instrument(
             results = await _fetch_table(
                 "cava_instruments", record=True, filters=filters, cache=cache
             )
-            final_results = [
-                dict(**res, **_get_inst_params(res["reference_designator"]))
-                for res in results
-            ]
-            if len(final_results) == 1:
-                return final_results[0]
-            else:
-                return JSONResponse(
-                    status_code=204,
-                    content={"message": f"{refdes} not found"},
-                )
         except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail={"message": f"{e}"},
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_instruments",
+                    record=True,
+                    filters=filters,
+                    cache=None,
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
+
+        final_results = [
+            dict(**res, **_get_inst_params(res["reference_designator"]))
+            for res in results
+        ]
+        if len(final_results) == 1:
+            return final_results[0]
+        else:
+            return JSONResponse(
+                status_code=204,
+                content={"message": f"{refdes} not found"},
             )
 
 
@@ -518,9 +576,21 @@ async def get_instrument_streams(
                 ("stream_type", "==", "Science"),
             ]
 
-        results = await _fetch_table(
-            "ooi_streams", record=True, filters=filters, cache=cache
-        )
+        try:
+            results = await _fetch_table(
+                "ooi_streams", record=True, filters=filters, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "ooi_streams", record=True, filters=filters, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
@@ -532,21 +602,26 @@ async def get_instrument_deployments(
 ):
     deployments = []
     if version:
-        cache_key = hash_dict({
-            'refdes': refdes,
-            'func': 'get_instrument_deployments'
-        })
-        cached_result = await _get_cache(cache, cache_key)
-        if cached_result is not None:
-            deployments = json.loads(cached_result)
-        else:
-            deployments = await retrieve_deployments(refdes)
-
-            await _set_cache(
-                cache,
-                cache_key,
-                value=deployments
+        try:
+            cache_key = hash_dict(
+                {'refdes': refdes, 'func': 'get_instrument_deployments'}
             )
+            cached_result = await _get_cache(cache, cache_key)
+            if cached_result is not None:
+                deployments = json.loads(cached_result)
+            else:
+                deployments = await retrieve_deployments(refdes)
+
+                await _set_cache(cache, cache_key, value=deployments)
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                deployments = await retrieve_deployments(refdes)
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
 
     return deployments
 
@@ -557,9 +632,21 @@ async def get_instrument_groups(
     cache=Depends(redis_dependency),
 ):
     if version:
-        results = await _fetch_table(
-            "cava_instrument-groups", record=True, cache=cache
-        )
+        try:
+            results = await _fetch_table(
+                "cava_instrument-groups", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_instrument-groups", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
@@ -574,9 +661,21 @@ async def get_data_products(
     cache=Depends(redis_dependency),
 ):
     if version:
-        results = await _fetch_table(
-            "cava_dataproducts", record=True, cache=cache
-        )
+        try:
+            results = await _fetch_table(
+                "cava_dataproducts", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_dataproducts", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
@@ -586,9 +685,21 @@ async def get_data_product_groups(
     cache=Depends(redis_dependency),
 ):
     if version:
-        results = await _fetch_table(
-            "cava_dataproduct-groups", record=True, cache=cache
-        )
+        try:
+            results = await _fetch_table(
+                "cava_dataproduct-groups", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "cava_dataproduct-groups", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
@@ -598,9 +709,21 @@ async def get_parameters(
     cache=Depends(redis_dependency),
 ):
     if version:
-        results = await _fetch_table(
-            "ooi_parameters", record=True, cache=cache
-        )
+        try:
+            results = await _fetch_table(
+                "ooi_parameters", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "ooi_parameters", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
@@ -616,9 +739,21 @@ async def get_streams(
             filters = [("stream_type", "==", "Science")]
             if inst_rd:
                 filters.append(("reference_designator", "==", inst_rd))
-        results = await _fetch_table(
-            "ooi_streams", record=True, filters=filters, cache=cache
-        )
+        try:
+            results = await _fetch_table(
+                "ooi_streams", record=True, filters=filters, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "ooi_streams", record=True, filters=filters, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
@@ -635,9 +770,21 @@ async def get_single_stream(
                 ("stream", "==", refdes),
                 ("stream_type", "==", "Science"),
             ]
-        results = await _fetch_table(
-            "ooi_streams", record=True, filters=filters, cache=cache
-        )
+        try:
+            results = await _fetch_table(
+                "ooi_streams", record=True, filters=filters, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "ooi_streams", record=True, filters=filters, cache=cache
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
@@ -648,7 +795,17 @@ async def get_sites(
     cache=Depends(redis_dependency),
 ):
     if version:
-        tabledf = await _fetch_table("cava_sites", cache=cache)
+        try:
+            tabledf = await _fetch_table("cava_sites", cache=cache)
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                tabledf = await _fetch_table("cava_sites", cache=None)
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
         tabledf = tabledf[tabledf.active_display == True]  # noqa
         if geojson:
             results = json.loads(_df_to_gdf_points(tabledf).to_json())
@@ -678,8 +835,21 @@ async def get_global_ranges(
     cache=Depends(redis_dependency),
 ):
     if version:
-        results = await _fetch_table("global_ranges", record=True, cache=cache)
-
+        try:
+            results = await _fetch_table(
+                "global_ranges", record=True, cache=cache
+            )
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                results = await _fetch_table(
+                    "global_ranges", record=True, cache=None
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
     return results
 
 
