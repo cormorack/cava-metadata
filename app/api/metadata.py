@@ -859,72 +859,134 @@ async def get_cables(version: bool = Depends(_check_version)):
         return RSN_CABLE
 
 
-@router.get("/get_deployments")
-def get_deployments(version: bool = Depends(_check_version), refdes: str = ""):
-    # deployments = list(
-    #     filter(
-    #         lambda dep: dep["reference_designator"] == refdes,
-    #         META["deployments_list"],
-    #     )
-    # )
-    deployments = retrieve_deployments(refdes)
+@router.get("/get_deployments", deprecated=True)
+async def get_deployments(
+    refdes: str = "", cache=Depends(redis_dependency)
+):
+    deployments = []
+    try:
+        cache_key = hash_dict({'refdes': refdes, 'func': 'get_deployments'})
+        cached_result = await _get_cache(cache, cache_key)
+        if cached_result is not None:
+            deployments = json.loads(cached_result)
+        else:
+            deployments = await retrieve_deployments(refdes)
+
+            await _set_cache(cache, cache_key, value=deployments)
+    except Exception as e:
+        if isinstance(e, ConnectionError):
+            logger.error("Redis disconnected! Fetching from source.")
+            deployments = await retrieve_deployments(refdes)
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail={"message": f"{e}"},
+            )
 
     return deployments
 
 
 @router.get("/data_availability")
-def get_data_availability(
+async def get_data_availability(
     ref: str,
     average: bool = True,
     resolution: Literal['hourly', 'daily', 'monthly'] = 'daily',
     version: bool = Depends(_check_version),
+    cache=Depends(redis_dependency),
 ):
+    data_availability = {}
     try:
         if version and ref:
+            cache_key = hash_dict(
+                {
+                    'ref': ref,
+                    'average': average,
+                    'resolution': resolution,
+                    'func': 'get_data_availability',
+                }
+            )
+            cached_result = await _get_cache(cache, cache_key)
+            if cached_result is not None:
+                data_availability = json.loads(cached_result)
+            else:
+                data_availability = _get_data_availability(
+                    ref, average, resolution=resolution
+                )
+
+                await _set_cache(cache, cache_key, value=data_availability)
+    except Exception as e:
+        if isinstance(e, ConnectionError):
+            logger.error("Redis disconnected! Fetching from source.")
             data_availability = _get_data_availability(
                 ref, average, resolution=resolution
             )
-            if isinstance(data_availability[ref], dict):
-                return data_availability
-            else:
-                return JSONResponse(
-                    status_code=204,
-                    content={"message": f"{ref} not found"},
-                )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={"message": f"{e}"},
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail={"message": f"{e}"},
+            )
+
+    if isinstance(data_availability[ref], dict):
+        return data_availability
+    else:
+        return JSONResponse(
+            status_code=204,
+            content={"message": f"{ref} not found"},
         )
+
+
+async def _retrieve_all_annotations(prepped_request):
+    annotations = {"annotations": {}, "count": 0}
+    count = 0
+    for rd in prepped_request["rd_list"]:
+        r = rd.split("-")
+        refdes = "-".join(r[:4])
+        stream_method = r[-2]
+        stream_rd = r[-1]
+        anno_df = await _get_annotations(
+            reference_designator=refdes,
+            stream_method=stream_method,
+            stream_rd=stream_rd,
+            begin_date=prepped_request["begin_date"],
+            end_date=prepped_request["end_date"],
+        )
+        anno = []
+        if isinstance(anno_df, pd.DataFrame):
+            anno = json.loads(anno_df.to_json(orient="records"))
+        count += len(anno)
+
+        annotations["annotations"].update({refdes: anno})
+    return annotations
 
 
 @router.get("/get_annotations")
 async def get_annotations(
     prepped_request: dict = Depends(_prepare_anno_request),
     version: bool = Depends(_check_version),
+    cache=Depends(redis_dependency),
 ):
     if version:
-        annotations = {"annotations": {}, "count": 0}
-        count = 0
-        for rd in prepped_request["rd_list"]:
-            r = rd.split("-")
-            refdes = "-".join(r[:4])
-            stream_method = r[-2]
-            stream_rd = r[-1]
-            anno_df = await _get_annotations(
-                reference_designator=refdes,
-                stream_method=stream_method,
-                stream_rd=stream_rd,
-                begin_date=prepped_request["begin_date"],
-                end_date=prepped_request["end_date"],
+        try:
+            cache_key = hash_dict(
+                {
+                    'ref': prepped_request,
+                    'func': 'get_annotations',
+                }
             )
-            anno = []
-            if isinstance(anno_df, pd.DataFrame):
-                anno = json.loads(anno_df.to_json(orient="records"))
-            count += len(anno)
-
-            annotations["annotations"].update({refdes: anno})
-        annotations["count"] = count
+            cached_result = await _get_cache(cache, cache_key)
+            if cached_result is not None:
+                annotations = json.loads(cached_result)
+            else:
+                annotations = await _retrieve_all_annotations(prepped_request)
+        except Exception as e:
+            if isinstance(e, ConnectionError):
+                logger.error("Redis disconnected! Fetching from source.")
+                annotations = await _retrieve_all_annotations(prepped_request)
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"message": f"{e}"},
+                )
         return annotations
 
 
