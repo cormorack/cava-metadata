@@ -223,7 +223,7 @@ def _get_data_availability(
     average: bool,
     resolution: Literal['hourly', 'daily', 'monthly'] = 'daily',
 ):
-    url_template = 'https://raw.githubusercontent.com/ooi-data/data_availability/main/{resolution}/{ref}'.format
+    url_template = 'https://raw.githubusercontent.com/ooi-data-prod/data_availability/main/{resolution}/{ref}'.format
     request_url = url_template(resolution=resolution, ref=ref)
     response = requests.get(request_url)
     if response.status_code == 200:
@@ -820,7 +820,7 @@ async def get_instruments_catalog(version: bool = Depends(_check_version)):
         if "legacy_catalog" not in META:
             fs = fsspec.filesystem('s3')
             with fs.open(
-                os.path.join('ooi-metadata', 'legacy_catalog.json')
+                os.path.join('ooi-metadata-prod', 'legacy_catalog.json')
             ) as f:
                 results = json.load(f)
                 META.update({"legacy_catalog": results})

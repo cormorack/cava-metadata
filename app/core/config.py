@@ -61,11 +61,11 @@ class Settings(BaseSettings):
         "GOOGLE_SERVICE_JSON",
         "",
     )
-    DATA_BUCKET = 'ooi-data'
+    DATA_BUCKET = 'ooi-data-prod'
 
     # Data sources
-    METADATA_SOURCE = "s3://ooi-metadata"
-    METADATA_BUCKET = "ooi-metadata"
+    METADATA_SOURCE = "s3://ooi-metadata-prod"
+    METADATA_BUCKET = "ooi-metadata-prod"
 
 
 settings = Settings()
@@ -126,7 +126,7 @@ GOOGLE_SERVICE_JSON = os.environ.get(
     "GOOGLE_SERVICE_JSON",
     "",
 )
-DATA_BUCKET = 'ooi-data'
+DATA_BUCKET = 'ooi-data-prod'
 
 # Data sources
-METADATA_SOURCE = "s3://ooi-metadata"
+METADATA_SOURCE = "s3://ooi-metadata-prod"
