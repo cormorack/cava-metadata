@@ -6,11 +6,11 @@ from typing import Optional
 
 
 class InstrumentRequest(BaseModel):
-    site: Optional[str]
-    group: Optional[str]
-    infrastructure: Optional[str]
-    area: Optional[str]
-    refdes: Optional[str]
+    site: Optional[str] = None
+    group: Optional[str] = None
+    infrastructure: Optional[str] = None
+    area: Optional[str] = None
+    refdes: Optional[str] = None
     include_params: bool = False
 
     _key: str = PrivateAttr()

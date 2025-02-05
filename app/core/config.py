@@ -1,6 +1,7 @@
 import os
 
-from pydantic import BaseSettings, RedisDsn
+from pydantic import RedisDsn
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
