@@ -18,13 +18,7 @@ from shapely.geometry import Polygon
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
-from core.config import (
-    BASE_URL,
-    CURRENT_API_VERSION,
-    M2M_URL,
-    METADATA_SOURCE,
-    settings,
-)
+from core.config import settings
 from cache.redis import redis_dependency, ConnectionError
 from store import META
 from utils.conn import send_request, retrieve_deployments
@@ -98,7 +92,7 @@ async def _set_cache(
 
 
 async def _check_version(version: float = 2.0):
-    if version == CURRENT_API_VERSION:
+    if version == settings.CURRENT_API_VERSION:
         return True
     else:
         raise HTTPException(status_code=404, detail="API version not found.")
@@ -149,7 +143,7 @@ async def _fetch_table(
         }
 
         tabledf = dataframe.read_parquet(
-            os.path.join(METADATA_SOURCE, table_name),
+            os.path.join(settings.METADATA_SOURCE, table_name),
             engine="pyarrow-dataset",
             filters=filters,
             index=False,
@@ -172,7 +166,7 @@ async def _fetch_table(
 async def _get_annotations(
     reference_designator, stream_method, stream_rd, begin_date, end_date
 ):
-    url = f"{BASE_URL}/{M2M_URL}/12580/anno/find"
+    url = f"{settings.BASE_URL}/{settings.M2M_URL}/12580/anno/find"
     params = {
         "beginDT": begin_date,
         "endDT": end_date,

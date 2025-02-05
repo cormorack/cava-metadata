@@ -8,20 +8,15 @@ import pickle
 import gspread
 import pandas as pd
 
-from core.config import (
-    BASE_PATH,
-    BASE_URL,
-    GOOGLE_SERVICE_JSON,
-    M2M_URL,
-    DATA_BUCKET,
-)
+from core.config import settings
+
 from store import META
 from utils.conn import map_concurrency, send_request
 from scripts.baseloader import Loader
 
 
 def get_stream(stream):
-    url = f"{BASE_URL}/{M2M_URL}/12575/stream/byname/{stream}"
+    url = f"{settings.BASE_URL}/{settings.M2M_URL}/12575/stream/byname/{stream}"
     stream_dict = send_request(url)
     return {
         "stream_id": stream_dict["id"],
@@ -78,7 +73,7 @@ def parse_global_range_dataframe(global_ranges):
 def retrieve_deployments(refdes):
     dep_port = 12587
     reflist = list(split_refdes(refdes))
-    base_url_list = [BASE_URL, M2M_URL, str(dep_port), "events/deployment/inv"]
+    base_url_list = [settings.BASE_URL, settings.M2M_URL, str(dep_port), "events/deployment/inv"]
     dep_list = send_request("/".join(base_url_list + reflist))
     deployments = []
     if isinstance(dep_list, list):
@@ -118,12 +113,12 @@ def read_cava_assets(asset_xfile="CAVA_Assets.xlsx"):
 
 
 def get_toc():
-    url = f"{BASE_URL}/{M2M_URL}/12576/sensor/inv/toc"
+    url = f"{settings.BASE_URL}/{settings.M2M_URL}/12576/sensor/inv/toc"
     return send_request(url)
 
 
 def get_vocab():
-    url = f"{BASE_URL}/{M2M_URL}/12586/vocab"
+    url = f"{settings.BASE_URL}/{settings.M2M_URL}/12586/vocab"
     return send_request(url)
 
 
@@ -369,7 +364,7 @@ class LoadMeta(Loader):
         self._logger.info("Done pickling metadata .")
 
     def initialize_metadata(self):
-        meta_path = os.path.join(BASE_PATH, "core/meta")
+        meta_path = os.path.join(settings.BASE_PATH, "core/meta")
         metadata_cache = os.path.join(meta_path, "metadata.pkl")
         if os.path.exists(metadata_cache):
             with open(metadata_cache, "rb") as f:
@@ -410,6 +405,6 @@ class LoadMeta(Loader):
 
     def fetch_creds(self):
         self._fs.get(
-            GOOGLE_SERVICE_JSON,
+            settings.GOOGLE_SERVICE_JSON,
             os.path.join(self._gspread_dir, "service_account.json"),
         )

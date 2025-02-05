@@ -1,6 +1,6 @@
 import os
 
-from typing import List, Dict, Any, ClassVar
+from typing import List, Dict, Optional, ClassVar
 from pydantic import RedisDsn
 from pydantic_settings import BaseSettings
 
@@ -30,11 +30,11 @@ class Settings(BaseSettings):
     BASE_PATH: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     # API VERSION
-    CURRENT_API_VERSION: float = 2.0
+    CURRENT_API_VERSION: str = '2.0'
 
     # Cloud Credentials
-    AWS_KEY: str | None = os.environ.get("AWS_ACCESS_KEY_ID", None)
-    AWS_SECRET: str | None = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
+    AWS_KEY: Optional[str] = os.environ.get("AWS_ACCESS_KEY_ID", None)
+    AWS_SECRET: Optional[str] = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
 
     # Redis configurations
     REDIS_URI: RedisDsn = os.environ.get(
@@ -71,64 +71,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
-# API SETTINGS
-SERVICE_NAME = "Metadata Service"
-SERVICE_ID = "metadata"
-OPENAPI_URL = f"/{SERVICE_ID}/openapi.json"
-DOCS_URL = f"/{SERVICE_ID}/"
-SERVICE_DESCRIPTION = """Metadata service for Interactive Oceans."""
-
-CORS_ORIGINS = [
-    "http://localhost",
-    "http://localhost:8000",
-    "http://localhost:5000",
-    "http://localhost:4000",
-    "https://appdev.ooica.net",
-    "https://app-dev.ooica.net",
-    "https://app.interactiveoceans.washington.edu",
-    "https://api-dev.ooica.net",
-    "https://api.interactiveoceans.washington.edu",
-    "https://api-development.ooica.net",
-    "https://cava-portal.netlify.app",
-]
-
-BASE_PATH = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# API VERSION
-CURRENT_API_VERSION = 2.0
-
-# Cloud Credentials
-AWS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", None)
-AWS_SECRET = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
-
-# Redis configurations
-REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
-REDIS_PORT = os.environ.get("REDIS_PORT", 6379)
-
-# OOI Configurations
-BASE_URL = "https://ooinet.oceanobservatories.org"
-M2M_URL = "api/m2m"
-USERNAME = os.environ.get("OOI_USERNAME", None)
-TOKEN = os.environ.get("OOI_TOKEN", None)
-
-# File Systems Configurations
-FILE_SYSTEMS = {
-    "minio_s3": dict(
-        protocol="s3", client_kwargs={"endpoint_url": "http://minio:9000"}
-    ),
-    "aws_s3": dict(
-        protocol="s3",
-        skip_instance_cache=True,
-        use_listings_cache=False,
-        config_kwargs={"max_pool_connections": 1000},
-    ),
-}
-GOOGLE_SERVICE_JSON = os.environ.get(
-    "GOOGLE_SERVICE_JSON",
-    "",
-)
-DATA_BUCKET = 'ooi-data-prod'
-
-# Data sources
-METADATA_SOURCE = "s3://ooi-metadata-prod"
