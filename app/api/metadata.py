@@ -91,7 +91,7 @@ async def _set_cache(
         )
 
 
-async def _check_version(version: float = 2.0):
+async def _check_version(version: str = '2.0'):
     if version == settings.CURRENT_API_VERSION:
         return True
     else:
