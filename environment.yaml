@@ -25,3 +25,5 @@ dependencies:
   - loguru
   - zarr
   - prometheus-fastapi-instrumentator
+  - pydantic > 2
+  - pydantic-settings

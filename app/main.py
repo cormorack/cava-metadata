@@ -7,31 +7,24 @@ from starlette.responses import RedirectResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from api import metadata
-from core.config import (
-    CORS_ORIGINS,
-    CURRENT_API_VERSION,
-    DOCS_URL,
-    OPENAPI_URL,
-    SERVICE_DESCRIPTION,
-    SERVICE_ID,
-    SERVICE_NAME,
-)
+from core.config import settings
+
 from scripts import LoadMeta, load_instrument_catalog
 
-logger = logging.getLogger(f"{SERVICE_ID}-app")
+logger = logging.getLogger(f"{settings.SERVICE_ID}-app")
 
 app = FastAPI(
-    title=SERVICE_NAME,
-    openapi_url=OPENAPI_URL,
-    docs_url=DOCS_URL,
+    title=settings.SERVICE_NAME,
+    openapi_url=settings.OPENAPI_URL,
+    docs_url=settings.DOCS_URL,
     redoc_url=None,
-    version=CURRENT_API_VERSION,
-    description=SERVICE_DESCRIPTION,
+    version=settings.CURRENT_API_VERSION,
+    description=settings.SERVICE_DESCRIPTION,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=settings.CORS_ORIGINS,
     # Regex for dev in netlify
     allow_origin_regex='https://.*cava-portal\.netlify\.app',
     allow_credentials=True,
@@ -42,7 +35,7 @@ app.add_middleware(
 
 @app.get("/", include_in_schema=False)
 def home():
-    return RedirectResponse(url=f"/{SERVICE_ID}")
+    return RedirectResponse(url=f"/{settings.SERVICE_ID}")
 
 
 @app.on_event("startup")
@@ -52,7 +45,7 @@ def startup_event():
 
 
 app.include_router(
-    metadata.router, prefix=f"/{SERVICE_ID}", tags=[f"{SERVICE_ID}"]
+    metadata.router, prefix=f"/{settings.SERVICE_ID}", tags=[f"{settings.SERVICE_ID}"]
 )
 
 # Prometheus instrumentation

@@ -3,7 +3,7 @@ import logging
 
 import requests
 
-from core.config import TOKEN, USERNAME, BASE_URL, M2M_URL
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def send_request(url, params=None):
     """Send request to OOI. Username and Token already included."""
     try:
         prepped_request = requests.Request(
-            "GET", url, params=params, auth=(USERNAME, TOKEN)
+            "GET", url, params=params, auth=(settings.USERNAME, settings.TOKEN)
         ).prepare()
         r = fetch_url(prepped_request, session=SESSION)
         if isinstance(r, requests.Response):
@@ -73,7 +73,7 @@ def split_refdes(refdes):
 async def retrieve_deployments(refdes):
     dep_port = 12587
     reflist = list(split_refdes(refdes))
-    base_url_list = [BASE_URL, M2M_URL, str(dep_port), "events/deployment/inv"]
+    base_url_list = [settings.BASE_URL, settings.M2M_URL, str(dep_port), "events/deployment/inv"]
     dep_list = send_request("/".join(base_url_list + reflist))
     deployments = []
     if isinstance(dep_list, list):
