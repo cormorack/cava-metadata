@@ -20,6 +20,8 @@ Note: Ensure you are at repo root.
     docker run --rm -it -p 80:80 cava-metadata:test
     ```
 
+    - Interact with API for development: http://localhost/metadata/
+
 ## Contribute
 
 - Issue Tracker: https://github.com/cormorack/cava-metadata/issues
