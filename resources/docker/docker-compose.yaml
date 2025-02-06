@@ -5,7 +5,7 @@ services:
       context: ../../
       dockerfile: ./resources/docker/Dockerfile
     ports:
-      - 8080:80
+      - 80:80
     command: /start-reload.sh
     volumes:
       - ../../app:/app:consistent
@@ -16,5 +16,17 @@ services:
       - HTTP=h11
     networks:
       - cava-network
+    depends_on:
+      - redis-service
+  redis-service:
+      image: bitnami/redis:latest
+      environment:
+        - ALLOW_EMPTY_PASSWORD=yes
+      ports:
+        - 6379:6379
+      expose:
+        - 6379
+      networks:
+        - cava-network
 networks:
   cava-network:
