@@ -8,7 +8,6 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Setting for the whole application"""
 
-    # TODO: Switch over fully to this settings
     SERVICE_NAME: ClassVar[str] = "Metadata Service"
     SERVICE_ID: ClassVar[str] = "metadata"
     OPENAPI_URL: ClassVar[str] = f"/{SERVICE_ID}/openapi.json"
