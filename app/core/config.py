@@ -59,10 +59,9 @@ class Settings(BaseSettings):
             config_kwargs={"max_pool_connections": 1000},
         ),
     }
-    GOOGLE_SERVICE_JSON: str = os.environ.get(
-        "GOOGLE_SERVICE_JSON",
-        "",
-    )
+
+    CAVA_ASSET_URL: str = "https://docs.google.com/spreadsheets/d/1YlZ6sKy11HMi64ZJOPkO76kMxpWOuZdTSiE8ODYR-Yc/gviz/tq?tqx=out:csv&sheet="
+
     DATA_BUCKET: str = 'ooi-data-prod'
 
     # Data sources
