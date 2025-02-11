@@ -4,8 +4,7 @@ import json
 from loguru import logger
 import os
 import pickle
-
-import gspread
+import fsspec
 import pandas as pd
 
 from core.config import settings
@@ -302,12 +301,6 @@ class LoadMeta(Loader):
     def __init__(self):
         Loader.__init__(self)
         self._name = "MetaLoader"
-        self._gspread_dir = os.path.join(
-            os.path.expanduser("~"), ".config", "gspread"
-        )
-
-        if not os.path.exists(self._gspread_dir):
-            os.makedirs(self._gspread_dir)
 
         self._dfdict = {}
         self._daemon = False
@@ -384,27 +377,20 @@ class LoadMeta(Loader):
             self._perform_refresh(metadata_cache)
 
     def read_cava_assets(self):
-        self.fetch_creds()
-        gc = gspread.service_account()
-        wks = gc.open("CAVA_Assets")
-        for ws in wks.worksheets():
-            name = ws.title
-            if name in [
-                "Arrays",
-                "Areas",
-                "Sites",
-                "Infrastructures",
-                "Instruments",
-                "Streams",
-                "Parameters",
-            ]:
-                lower_name = name.lower()
-                df = pd.DataFrame(ws.get_all_records())
+        sheet_names = [
+            "Arrays",
+            "Areas",
+            "Sites",
+            "Infrastructures",
+            "Instruments",
+            "Streams",
+            "Parameters",
+        ]
+        for sheet in sheet_names:
+            lower_name = sheet.lower()
+            url = f"{settings.CAVA_ASSET_URL}{sheet}"
+            with fsspec.open(url) as f:
+                df = pd.read_csv(f)
                 df = df.replace({"TRUE": True, "FALSE": False})
                 self._dfdict[lower_name] = df
 
-    def fetch_creds(self):
-        self._fs.get(
-            settings.GOOGLE_SERVICE_JSON,
-            os.path.join(self._gspread_dir, "service_account.json"),
-        )
