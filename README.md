@@ -21,6 +21,11 @@ Note: Ensure you are at repo root.
     ```
 
     - Interact with API for development: http://localhost/metadata/
+  
+   - To launch application for local development image use
+   ```bash
+   gunicorn -w 4 -k uvicorn.workers.UvicornWorker -b 127.0.0.1:8000 main:app
+   ```
 
 ## Contribute
 
