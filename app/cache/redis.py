@@ -32,8 +32,9 @@ class RedisDependency:
                 await self.redis.ping()
                 self.connected = True
                 logger.info("Redis connected!")
-            except ConnectionError:
+            except ConnectionError as e :
                 if self.retries > 0:
+                    logger.warning(e)
                     logger.warning("Not connected to Redis. Trying again.")
                     time.sleep(5)
                     self.retries = self.retries - 1

@@ -37,7 +37,7 @@ class Settings(BaseSettings):
 
     # Redis configurations
     REDIS_URI: RedisDsn = os.environ.get(
-        "REDIS_URI", "redis://localhost:6379/0"
+        "REDIS_URI", "redis://redis-service:6379/0"
     )
 
     # OOI Configurations

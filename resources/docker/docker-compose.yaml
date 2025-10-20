@@ -12,16 +12,24 @@ services:
     environment:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - OOI_USERNAME=${OOI_USERNAME}
+      - OOI_TOKEN=${OOI_TOKEN}
       - LOOP=asyncio
       - HTTP=h11
     networks:
       - cava-network
-    depends_on:
-      - redis-service
+    # depends_on:
+    #   - redis-service
   redis-service:
-      image: bitnami/redis:latest
-      environment:
-        - ALLOW_EMPTY_PASSWORD=yes
+      # image: bitnami/redis:latest
+      image: redis:alpine3.13
+      command: >
+        redis-server --bind redis-service
+      # environment:
+        # - ALLOW_EMPTY_PASSWORD=yes
+        # REDIS_ARGS: "--requirepass ${REDIS_PASSWORD}"
+      # env_file:
+      # - .env
       ports:
         - 6379:6379
       expose:
